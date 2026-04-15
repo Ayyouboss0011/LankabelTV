@@ -5,9 +5,11 @@
 </div>
 
 <div align="center">
-  <img src="Photos/Photo1.png" width="30%" alt="Screenshot 1">
-  <img src="Photos/Photo2.png" width="30%" alt="Screenshot 2">
-  <img src="Photos/Photo3.png" width="30%" alt="Screenshot 3">
+  <img src="Photos/Photo1.png" width="80%" alt="Screenshot 1" style="margin-bottom: 20px;">
+  <br>
+  <img src="Photos/Photo2.png" width="80%" alt="Screenshot 2" style="margin-bottom: 20px;">
+  <br>
+  <img src="Photos/Photo3.png" width="80%" alt="Screenshot 3">
 </div>
 
 ---
