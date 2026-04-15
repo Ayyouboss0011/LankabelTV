@@ -88,4 +88,5 @@ LankabelTV is purely a client-side tool. It does not host, store, or distribute 
 
 ## 📄 License
 
-This project is released under the MIT License. See the `LICENSE` file for more details.
+This project is released under the **[MIT License](LICENSE)**.
+For more details, please see the full `LICENSE` file included with this project.
