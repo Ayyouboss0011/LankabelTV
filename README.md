@@ -16,67 +16,67 @@
 
 ---
 
-LankabelTV ist ein modernes, schnelles und ressourcenschonendes Command-Line-Tool sowie Web-Interface zum Herunterladen und Streamen von Anime und Serien. 
+LankabelTV is a modern, fast, and resource-efficient command-line tool and web interface for downloading and streaming anime and series.
 
-Im Gegensatz zu anderen Tools setzt LankabelTV nicht auf schwerfällige Browser-Automatisierung, sondern nutzt direkte HTTP-Requests und leistungsstarke Bibliotheken wie `yt-dlp` und `BeautifulSoup`. Dies sorgt für maximale Performance und eine einfache Einrichtung.
+Unlike other tools, LankabelTV does not rely on heavy browser automation, but uses direct HTTP requests and powerful libraries like `yt-dlp` and `BeautifulSoup`. This ensures maximum performance and an easy setup.
 
 ## ✨ Features
 
-- **Modernes Web-UI:** Eine elegante, "Netflix-ähnliche" Weboberfläche mit dynamischen Katalogen.
-- **TMDB-Integration:** Automatische Anreicherung von Serien und Animes mit Postern, Beschreibungen und Bewertungen direkt aus The Movie Database.
-- **Ressourcenschonend:** Keine virtuellen Displays (Xvfb) oder Chromium-Instanzen nötig. Läuft nativ und leichtgewichtig.
-- **Multi-Source Support:** Unterstützt nahtlos Inhalte von verschiedenen Providern.
-- **Interaktives CLI:** Eine schnelle Curses-basierte Kommandozeilenoberfläche für Terminal-Liebhaber.
-- **Smart Search:** Integrierter Inhaltsfilter und optimierte Suchlogik.
+- **Modern Web UI:** An elegant, "Netflix-style" web interface with dynamic catalogs.
+- **TMDB Integration:** Automatic enrichment of series and animes with posters, descriptions, and ratings directly from The Movie Database.
+- **Resource Efficient:** No virtual displays (Xvfb) or Chromium instances required. Runs natively and lightweight.
+- **Multi-Source Support:** Seamlessly supports content from various providers.
+- **Interactive CLI:** A fast, curses-based command-line interface for terminal lovers.
+- **Smart Search:** Integrated content filter and optimized search logic.
 
 ## 🚀 Quick Start
 
-### Voraussetzungen
-- Python 3.9 oder höher
-- `ffmpeg` (für die Videoverarbeitung)
+### Prerequisites
+- Python 3.9 or higher
+- `ffmpeg` (for video processing)
 
 ### Installation
 
 ```bash
-# Repository klonen
+# Clone the repository
 git clone https://github.com/Ayyouboss0011/LankabelTV.git
 cd LankabelTV
 
-# Abhängigkeiten installieren
+# Install dependencies
 pip install -r requirements.txt
 pip install -e .
 ```
 
-### Starten
+### Usage
 
 ```bash
-# Web-UI starten (Standard)
+# Start Web UI (Default)
 lankabeltv -w -p 8080
 
-# CLI Modus starten
+# Start CLI mode
 lankabeltv
 ```
 
 ## 🐳 Docker Deployment
 
-LankabelTV ist vollständig für Docker optimiert. Da keine Browser-Abhängigkeiten bestehen, ist das Image extrem klein und effizient.
+LankabelTV is fully optimized for Docker. Since there are no browser dependencies, the image is extremely small and efficient.
 
 ```bash
 docker-compose up -d --build
 ```
-*Deine Downloads landen standardmäßig im gemounteten `./downloads` Verzeichnis.*
+*By default, your downloads will be saved in the mounted `./downloads` directory.*
 
-## 🛠️ Technologien
+## 🛠️ Technologies
 
-LankabelTV basiert auf einem robusten Python-Stack:
+LankabelTV is built on a robust Python stack:
 - **Scraping & Downloads:** `requests`, `BeautifulSoup4`, `yt-dlp`
-- **Web-Frontend:** `Flask`, Modernes Vanilla JS, CSS Variables
+- **Web Frontend:** `Flask`, Modern Vanilla JS, CSS Variables
 - **CLI:** `npyscreen`, `curses`
 
 ## ⚠️ Legal Disclaimer
 
-LankabelTV ist ein reines Client-Side-Tool. Es hostet, speichert oder verteilt selbst keine urheberrechtlich geschützten Medien. Die Nutzung dieses Tools geschieht auf eigene Verantwortung. Stelle sicher, dass du die Nutzungsbedingungen der Webseiten, auf die du zugreifst, sowie die in deinem Land geltenden Gesetze respektierst.
+LankabelTV is purely a client-side tool. It does not host, store, or distribute any copyrighted media itself. Use of this tool is at your own risk. Ensure that you respect the terms of service of the websites you access, as well as the applicable laws in your country.
 
-## 📄 Lizenz
+## 📄 License
 
-Dieses Projekt ist unter der MIT Lizenz veröffentlicht. Siehe die `LICENSE` Datei für weitere Details.
+This project is released under the MIT License. See the `LICENSE` file for more details.
