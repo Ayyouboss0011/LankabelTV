@@ -1,20 +1,29 @@
 <div align="center">
   <img src="Photos/LankabelTV_Logo.png" alt="LankabelTV Logo" width="300" style="margin-bottom: 20px;">
   <br>
+  <br>
   <a href="https://www.buymeacoffee.com/ayyouboss" target="_blank">
     <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" >
   </a>
 </div>
 
+<br>
+<hr>
+<br>
+
 <div align="center">
-  <img src="Photos/Photo1.png" width="80%" alt="Screenshot 1" style="margin-bottom: 20px;">
+  <img src="Photos/Photo1.png" width="80%" alt="Screenshot 1" style="margin-bottom: 30px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
   <br>
-  <img src="Photos/Photo2.png" width="80%" alt="Screenshot 2" style="margin-bottom: 20px;">
   <br>
-  <img src="Photos/Photo3.png" width="80%" alt="Screenshot 3">
+  <img src="Photos/Photo2.png" width="80%" alt="Screenshot 2" style="margin-bottom: 30px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+  <br>
+  <br>
+  <img src="Photos/Photo3.png" width="80%" alt="Screenshot 3" style="margin-bottom: 10px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
 </div>
 
----
+<br>
+<hr>
+<br>
 
 LankabelTV is a modern, fast, and resource-efficient command-line tool and web interface for downloading and streaming anime and series.
 
