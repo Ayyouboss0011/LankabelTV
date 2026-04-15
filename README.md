@@ -1,7 +1,9 @@
 # LankabelTV 📺
 
 <div align="center">
-  [![Buy Me a Coffee](https://img.buymeacoffee.com/button-api/?text=Buy%20me%20a%20coffee&emoji=&slug=ayyouboss&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff)](https://www.buymeacoffee.com/ayyouboss)
+  <a href="https://www.buymeacoffee.com/ayyouboss" target="_blank">
+    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" >
+  </a>
 </div>
 
 <div align="center">
