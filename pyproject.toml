@@ -1,0 +1,72 @@
+[project]
+name = "lankabeltv"
+version = "1.0.0"
+authors = [
+  { name="Ayyouboss0011", email="ayyoub.ag@gmail.com" },
+]
+maintainers = [
+  { name="Ayyouboss0011", email="ayyoub.ag@gmail.com" }
+]
+description = "LankabelTV is a command-line tool and web interface for downloading and streaming anime, series and movies."
+keywords = [
+    "anime", 
+    "lankabeltv", 
+    "streaming",
+    "download",
+    "video",
+    "multimedia",
+    "cli"
+]
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = [
+    'requests',
+    'bs4',
+    'yt-dlp',
+    'npyscreen',
+    'tqdm',
+    'fake_useragent',
+    'packaging',
+    'jsbeautifier',
+    'flask',
+    'dnspython',
+    'py-cpuinfo; platform_system == "Windows"',
+    'windows-curses; platform_system == "Windows"',
+    'winfcntl; platform_system == "Windows"'
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Topic :: Multimedia",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Multimedia :: Video :: Display",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Archiving",
+    "Topic :: Utilities",
+    "Typing :: Typed"
+]
+
+[project.urls]
+# Homepage = ""
+# Repository = ""
+# "Bug Tracker" = ""
+
+[project.scripts]
+lankabeltv = "lankabeltv.entry:lankabeltv"

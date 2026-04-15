@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LankabelTV</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <nav class="navbar" id="main-navbar">
+        <div class="nav-container">
+            <div class="nav-left">
+                <div class="nav-brand">
+                    <img src="{{ url_for('static', filename='img/logo.png') }}" alt="LankabelTV Logo" id="nav-logo">
+                </div>
+                <div class="nav-tabs">
+                    <button class="nav-tab active" id="tab-home">Home</button>
+                    <button class="nav-tab" id="tab-downloads">
+                        Downloads
+                        <span id="download-badge" class="badge" style="display: none;"></span>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="nav-right">
+                <div class="nav-search-container" id="nav-search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="search-input" placeholder="Titles, people, genres" class="nav-search-input">
+                </div>
+                
+                <div class="nav-actions">
+                    {% if not (auth_enabled and user) %}
+                    <a href="{{ url_for('settings') }}" class="nav-tab" title="Settings">
+                        <i class="fas fa-cog"></i>
+                    </a>
+                    {% endif %}
+                    
+                    {% if auth_enabled and user %}
+                    <div class="user-dropdown">
+                        <button class="nav-tab user-btn" id="user-dropdown-btn">
+                            <i class="fas fa-user"></i>
+                            <span class="username">{{ user.username }}</span>
+                            <i class="fas fa-chevron-down" style="font-size: 10px;"></i>
+                        </button>
+                        <div class="dropdown-menu" id="user-dropdown-menu">
+                            <a href="{{ url_for('settings') }}" class="dropdown-item">
+                                <i class="fas fa-cog"></i> Settings
+                            </a>
+                            <button class="dropdown-item logout-btn" id="logout-btn">
+                                <i class="fas fa-sign-out-alt"></i> Logout
+                            </button>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="content-wrapper">
+        <main id="main-view">
+            <!-- Hero Section -->
+            <section class="hero" id="hero-section">
+                <div class="hero-background" id="hero-bg" style="background-image: url('https://image.tmdb.org/t/p/original/m99STU9BvXU6q8D0C9z48S6Y7sX.jpg');"></div>
+                <div class="hero-overlay"></div>
+                <div class="hero-content">
+                    <h1 class="hero-title" id="hero-title">Featured Content</h1>
+                    <p class="hero-description" id="hero-desc">Discover the most popular anime and series currently trending on LankabelTV.</p>
+                    <div class="hero-buttons">
+                        <button class="hero-btn primary" id="hero-play-btn">
+                            <i class="fas fa-download"></i> Download
+                        </button>
+                        <button class="hero-btn secondary">
+                            <i class="fas fa-info-circle"></i> More Info
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <div class="main-container">
+                <!-- Search Results (Hidden by default) -->
+                <div class="results-section" id="results-section" style="display: none; padding-top: 80px;">
+                    <div class="row-header">
+                        <h3 class="row-title">Search Results</h3>
+                        <div id="results-count" style="color: var(--text-secondary); font-size: 0.9rem;"></div>
+                    </div>
+                    <div id="results-container" class="results-grid">
+                        <!-- Search results will be populated here -->
+                    </div>
+                </div>
+
+                <!-- Home Content (Rows) -->
+                <div class="home-content" id="home-content">
+                    <div class="loading-section" id="home-loading" style="padding-top: 100px; text-align: center;">
+                        <div class="loading-spinner"></div>
+                        <p>Loading your catalog...</p>
+                    </div>
+
+                    <div id="popular-new-sections" style="display: none;">
+                        <!-- Popular Row -->
+                        <div class="row">
+                            <div class="row-header">
+                                <h3 class="row-title">Popular on LankabelTV</h3>
+                            </div>
+                            <div class="row-container" id="popular-anime-grid">
+                                <!-- Popular anime cards -->
+                            </div>
+                        </div>
+
+                        <!-- New Row -->
+                        <div class="row">
+                            <div class="row-header">
+                                <h3 class="row-title">New Additions</h3>
+                            </div>
+                            <div class="row-container" id="new-anime-grid">
+                                <!-- New anime cards -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="loading-section" id="loading-section" style="display: none; padding-top: 100px; text-align: center;">
+                    <div class="loading-spinner"></div>
+                    <p>Searching...</p>
+                </div>
+            </div>
+        </main>
+
+        <!-- Download View -->
+        <main id="downloads-view" style="display: none;">
+            <div class="main-container">
+                <div class="queue-section">
+                    <h2>My Downloads</h2>
+                    
+                    <div class="active-downloads" id="active-downloads">
+                        <h4><i class="fas fa-download"></i> Active Queue</h4>
+                        <div class="queue-list" id="active-queue-list"></div>
+                    </div>
+
+                    <div id="downloads-empty-state" class="empty-state" style="text-align: center; padding: 50px;">
+                        <i class="fas fa-download" style="font-size: 3rem; margin-bottom: 1rem; color: #333;"></i>
+                        <h3>Your queue is empty</h3>
+                        <p>Find something to watch and start downloading!</p>
+                    </div>
+
+                    <div class="completed-downloads" id="completed-downloads" style="display: none;">
+                        <h4><i class="fas fa-check-circle"></i> Recently Completed</h4>
+                        <div class="queue-list" id="completed-queue-list"></div>
+                    </div>
+
+                    <!-- Trackers Section -->
+                    <div class="trackers-section" id="trackers-section" style="margin-top: 50px; display: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h4 style="font-size: 1.5rem; font-weight: 700;"><i class="fas fa-eye" style="color: var(--netflix-red);"></i> Active Trackers</h4>
+                            <button id="scan-trackers-btn" class="lang-badge" style="padding: 8px 16px;">
+                                <i class="fas fa-sync-alt"></i> Check Now
+                            </button>
+                        </div>
+                        <div class="results-grid" id="trackers-list">
+                            <!-- Trackers will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals (Reusing existing IDs for compatibility) -->
+    <div id="download-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <button id="close-download-modal" class="close-btn" style="position: absolute; right: 25px; top: 25px; z-index: 100; background: rgba(0,0,0,0.5); border: none; color: white; width: 44px; height: 44px; border-radius: 50%; font-size: 32px; cursor: pointer; display: flex; align-items: center; justify-content: center;">&times;</button>
+            
+            <div class="detail-hero" id="detail-backdrop">
+                <div class="detail-hero-overlay"></div>
+                <div class="detail-header-content">
+                    <h1 class="detail-title" id="download-anime-title">Series Title</h1>
+                    <div class="detail-meta">
+                        <span class="match-score" id="detail-rating">--% Match</span>
+                        <span class="detail-year" id="detail-year">----</span>
+                        <span class="site-badge" id="detail-status">Status</span>
+                    </div>
+                    <p class="detail-overview" id="detail-overview">Loading description...</p>
+                    <div id="detail-genres" class="detail-genres">
+                        <!-- Genres here -->
+                    </div>
+                    <div style="display: flex; gap: 15px;">
+                        <button id="confirm-download" class="hero-btn primary" disabled style="min-width: 180px; justify-content: center;">
+                            <i class="fas fa-download"></i> Start Download
+                        </button>
+                        <button class="card-icon-btn" style="width: 44px; height: 44px;"><i class="fas fa-plus"></i></button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-body">
+                <div id="download-path-container" style="margin-bottom: 30px; font-size: 0.9rem; color: #aaa; background: #222; padding: 15px; border-radius: 4px; border: 1px solid #333;">
+                    <i class="fas fa-folder-open" style="margin-right: 10px; color: var(--netflix-red);"></i> <strong>Download Path:</strong> <span id="download-path"></span>
+                </div>
+                
+                <div class="episode-selection">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h4 style="font-size: 1.5rem; font-weight: 700;">Episodes</h4>
+                        <div style="display: flex; gap: 10px;">
+                            <button id="select-all" class="lang-badge" style="padding: 6px 12px;">Select All</button>
+                            <button id="deselect-all" class="lang-badge" style="padding: 6px 12px;">Deselect All</button>
+                        </div>
+                    </div>
+                    
+                    <div id="episode-tree-loading" style="text-align: center; padding: 60px;">
+                        <div class="loading-spinner"></div>
+                        <p style="margin-top: 15px; color: var(--text-secondary);">Syncing with server...</p>
+                    </div>
+                    
+                    <div id="episode-tree" style="display: none;">
+                        <!-- Seasons & Episodes -->
+                    </div>
+                </div>
+
+                <!-- Tracker Option -->
+                <div class="tracker-option" style="margin-top: 40px; padding: 25px; background: #222; border-radius: 8px; border: 1px solid #333;">
+                    <label style="display: flex; align-items: center; gap: 15px; cursor: pointer; font-weight: 700; font-size: 1.1rem;">
+                        <input type="checkbox" id="track-series-checkbox" style="width: 22px; height: 22px; accent-color: var(--netflix-red);">
+                        <span>Track this series for new episodes</span>
+                    </label>
+                    <div id="tracker-language-selection" style="display: none; margin-top: 20px; padding-left: 37px;">
+                        <p style="font-size: 0.9rem; color: #aaa; margin-bottom: 15px;">Preferred Language:</p>
+                        <div id="tracker-language-dropdown" class="episode-lang-badges">
+                            <!-- Populated via JS -->
+                            <input type="hidden" id="tracker-language" value="German Dub">
+                        </div>
+                    </div>
+                    <div id="tracker-last-seen-preview" style="display: none; margin-top: 15px; padding-left: 37px; font-size: 0.9rem; color: var(--text-secondary);">
+                        <i class="fas fa-info-circle"></i> Last seen on source: <span id="last-seen-status">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tracker Removal Confirmation Modal -->
+    <div id="tracker-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content" style="max-width: 450px !important; min-height: auto; padding: 30px;">
+            <h3 style="margin-bottom: 20px; font-size: 1.5rem; font-weight: 700;">Remove Tracker</h3>
+            <p style="margin-bottom: 30px; color: var(--text-secondary);">Are you sure you want to remove the tracker for <strong id="tracker-modal-title" style="color: white;"></strong>?</p>
+            <div style="display: flex; justify-content: flex-end; gap: 15px;">
+                <button id="cancel-tracker-remove" class="lang-badge" style="padding: 10px 20px;">Cancel</button>
+                <button id="confirm-tracker-remove" class="hero-btn primary" style="padding: 10px 20px; font-size: 0.9rem;">Remove</button>
+            </div>
+            <button id="close-tracker-modal" style="position: absolute; right: 20px; top: 20px; background: none; border: none; color: white; font-size: 24px; cursor: pointer;">&times;</button>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>
+        // Navbar scroll effect
+        window.addEventListener('scroll', () => {
+            const nav = document.getElementById('main-navbar');
+            if (window.scrollY > 50) {
+                nav.classList.add('scrolled');
+            } else {
+                nav.classList.remove('scrolled');
+            }
+        });
+
+        {% if auth_enabled and user %}
+        document.getElementById('user-dropdown-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.getElementById('user-dropdown-menu').classList.toggle('show');
+        });
+        document.addEventListener('click', () => {
+            document.getElementById('user-dropdown-menu').classList.remove('show');
+        });
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+            const res = await fetch('/logout', {method: 'POST'});
+            const data = await res.json();
+            if (data.success) window.location.href = data.redirect;
+        });
+        {% endif %}
+    </script>
+</body>
+</html>

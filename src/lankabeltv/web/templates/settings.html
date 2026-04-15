@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Account - LankabelTV</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="settings-page">
+    <nav class="navbar scrolled">
+        <div class="nav-container">
+            <div class="nav-left">
+                <div class="nav-brand">
+                    <img src="{{ url_for('static', filename='img/logo.png') }}" alt="LankabelTV Logo" onclick="window.location.href='{{ url_for('index') }}'">
+                </div>
+            </div>
+            <div class="nav-actions">
+                <a href="{{ url_for('index') }}" class="nav-btn" title="Back to Main">
+                    <i class="fas fa-home"></i>
+                </a>
+                {% if auth_enabled %}
+                <div class="user-dropdown">
+                    <button class="nav-btn user-btn" id="user-dropdown-btn">
+                        <i class="fas fa-user"></i>
+                        <span class="username">{{ user.username }}</span>
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                    <div class="dropdown-menu" id="user-dropdown-menu">
+                        <a href="{{ url_for('index') }}" class="dropdown-item">Home</a>
+                        <button class="dropdown-item logout-btn" id="logout-btn">Logout</button>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <div class="settings-main">
+        <div class="settings-header">
+            <h1>Account</h1>
+        </div>
+
+        <div class="settings-wrapper">
+            <!-- General Section -->
+            <section class="account-section">
+                <div class="section-left">
+                    <h2>General</h2>
+                </div>
+                <div class="section-right">
+                    <form id="systemSettingsForm" class="account-form">
+                        <div class="account-row">
+                            <div class="account-field">
+                                <label for="seriesDownloadPath">Serien Download Pfad</label>
+                                <input type="text" id="seriesDownloadPath" placeholder="Default: ~/Downloads">
+                            </div>
+                        </div>
+                        <div class="account-row">
+                            <div class="account-field">
+                                <label for="movieDownloadPath">Film Download Pfad</label>
+                                <input type="text" id="movieDownloadPath" placeholder="Default: ~/Downloads">
+                                <small class="text-muted">Achtung: Bei Container Usage ist der Pfad der intern in dem Container ist.</small>
+                            </div>
+                        </div>
+                        <div class="account-row action-row">
+                            <button type="submit" class="link-btn">Save Settings</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Security Section -->
+            {% if auth_enabled %}
+            <section class="account-section">
+                <div class="section-left">
+                    <h2>Security</h2>
+                </div>
+                <div class="section-right">
+                    <div class="user-info-row">
+                        <span class="user-label">Username:</span>
+                        <span class="user-value">{{ user.username }}</span>
+                    </div>
+                    <div class="user-info-row">
+                        <span class="user-label">Role:</span>
+                        <span class="user-value">{{ 'Original Administrator' if user.is_original_admin else ('Administrator' if user.is_admin else 'User') }}</span>
+                    </div>
+                    <form id="changePasswordForm" class="account-form">
+                        <div class="account-row">
+                            <div class="account-field">
+                                <label for="currentPassword">Current Password</label>
+                                <input type="password" id="currentPassword" required>
+                            </div>
+                        </div>
+                        <div class="account-row">
+                            <div class="account-field">
+                                <label for="newPassword">New Password</label>
+                                <input type="password" id="newPassword" required minlength="6">
+                            </div>
+                        </div>
+                        <div class="account-row">
+                            <div class="account-field">
+                                <label for="confirmNewPassword">Confirm New Password</label>
+                                <input type="password" id="confirmNewPassword" required>
+                            </div>
+                        </div>
+                        <div class="account-row action-row">
+                            <button type="submit" class="link-btn">Change Password</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+            {% endif %}
+
+            <!-- Languages Section -->
+            <section class="account-section">
+                <div class="section-left">
+                    <h2>Languages</h2>
+                </div>
+                <div class="section-right">
+                    <p class="section-desc">Definiere hier deine bevorzugten Sprachen in der gewünschten Reihenfolge.</p>
+                    <form id="languagePreferencesForm" class="account-form">
+                        <div class="pref-grid">
+                            <div class="pref-col">
+                                <h3>AniWorld.to</h3>
+                                <div class="account-field">
+                                    <label>1. Priorität</label>
+                                    <select class="lang-pref-select lankabeltv-pref" data-index="0">
+                                        <option value="">- Keine -</option>
+                                        <option value="German Dub">German Dub</option>
+                                        <option value="German Sub">German Sub</option>
+                                        <option value="English Sub">English Sub</option>
+                                    </select>
+                                </div>
+                                <div class="account-field">
+                                    <label>2. Priorität</label>
+                                    <select class="lang-pref-select lankabeltv-pref" data-index="1">
+                                        <option value="">- Keine -</option>
+                                        <option value="German Dub">German Dub</option>
+                                        <option value="German Sub">German Sub</option>
+                                        <option value="English Sub">English Sub</option>
+                                    </select>
+                                </div>
+                                <div class="account-field">
+                                    <label>3. Priorität</label>
+                                    <select class="lang-pref-select lankabeltv-pref" data-index="2">
+                                        <option value="">- Keine -</option>
+                                        <option value="German Dub">German Dub</option>
+                                        <option value="German Sub">German Sub</option>
+                                        <option value="English Sub">English Sub</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="pref-col">
+                                <h3>S.to</h3>
+                                <div class="account-field">
+                                    <label>1. Priorität</label>
+                                    <select class="lang-pref-select sto-pref" data-index="0">
+                                        <option value="">- Keine -</option>
+                                        <option value="German Dub">German Dub</option>
+                                        <option value="English Dub">English Dub</option>
+                                    </select>
+                                </div>
+                                <div class="account-field">
+                                    <label>2. Priorität</label>
+                                    <select class="lang-pref-select sto-pref" data-index="1">
+                                        <option value="">- Keine -</option>
+                                        <option value="German Dub">German Dub</option>
+                                        <option value="English Dub">English Dub</option>
+                                    </select>
+                                </div>
+                                <div class="account-field">
+                                    <label>3. Priorität</label>
+                                    <select class="lang-pref-select sto-pref" data-index="2">
+                                        <option value="">- Keine -</option>
+                                        <option value="German Dub">German Dub</option>
+                                        <option value="English Dub">English Dub</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="account-row action-row">
+                            <button type="submit" class="link-btn">Save Language Preferences</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Providers Section -->
+            <section class="account-section">
+                <div class="section-left">
+                    <h2>Providers</h2>
+                </div>
+                <div class="section-right">
+                    <p class="section-desc">Definiere hier deine bevorzugten Provider in der gewünschten Reihenfolge.</p>
+                    <form id="providerPreferencesForm" class="account-form">
+                        <div class="pref-grid">
+                            <div class="pref-col">
+                                <h3>AniWorld.to</h3>
+                                <div class="account-field">
+                                    <label>1. Priorität</label>
+                                    <select class="prov-pref-select lankabeltv-prov-pref" data-index="0">
+                                        <option value="">- Keine -</option>
+                                        <option value="VOE">VOE</option>
+                                        <option value="Vidoza">Vidoza</option>
+                                        <option value="Streamtape">Streamtape</option>
+                                        <option value="Filemoon">Filemoon</option>
+                                    </select>
+                                </div>
+                                <div class="account-field">
+                                    <label>2. Priorität</label>
+                                    <select class="prov-pref-select lankabeltv-prov-pref" data-index="1">
+                                        <option value="">- Keine -</option>
+                                        <option value="VOE">VOE</option>
+                                        <option value="Vidoza">Vidoza</option>
+                                        <option value="Streamtape">Streamtape</option>
+                                        <option value="Filemoon">Filemoon</option>
+                                    </select>
+                                </div>
+                                <div class="account-field">
+                                    <label>3. Priorität</label>
+                                    <select class="prov-pref-select lankabeltv-prov-pref" data-index="2">
+                                        <option value="">- Keine -</option>
+                                        <option value="VOE">VOE</option>
+                                        <option value="Vidoza">Vidoza</option>
+                                        <option value="Streamtape">Streamtape</option>
+                                        <option value="Filemoon">Filemoon</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="pref-col">
+                                <h3>S.to</h3>
+                                <div class="account-field">
+                                    <label>1. Priorität</label>
+                                    <select class="prov-pref-select sto-prov-pref" data-index="0">
+                                        <option value="">- Keine -</option>
+                                        <option value="VOE">VOE</option>
+                                        <option value="Vidoza">Vidoza</option>
+                                        <option value="Streamtape">Streamtape</option>
+                                        <option value="Filemoon">Filemoon</option>
+                                    </select>
+                                </div>
+                                <div class="account-field">
+                                    <label>2. Priorität</label>
+                                    <select class="prov-pref-select sto-prov-pref" data-index="1">
+                                        <option value="">- Keine -</option>
+                                        <option value="VOE">VOE</option>
+                                        <option value="Vidoza">Vidoza</option>
+                                        <option value="Streamtape">Streamtape</option>
+                                        <option value="Filemoon">Filemoon</option>
+                                    </select>
+                                </div>
+                                <div class="account-field">
+                                    <label>3. Priorität</label>
+                                    <select class="prov-pref-select sto-prov-pref" data-index="2">
+                                        <option value="">- Keine -</option>
+                                        <option value="VOE">VOE</option>
+                                        <option value="Vidoza">Vidoza</option>
+                                        <option value="Streamtape">Streamtape</option>
+                                        <option value="Filemoon">Filemoon</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="account-row action-row">
+                            <button type="submit" class="link-btn">Save Provider Preferences</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Download Settings Section -->
+            <section class="account-section">
+                <div class="section-left">
+                    <h2>Downloads</h2>
+                </div>
+                <div class="section-right">
+                    <p class="section-desc">Konfiguriere hier die Einstellungen für deine Downloads.</p>
+                    <form id="downloadSettingsForm" class="account-form">
+                        <div class="account-row">
+                            <div class="account-field">
+                                <label for="maxConcurrentSeries">Parallel Serien / Filme</label>
+                                <input type="number" id="maxConcurrentSeries" min="1" max="5" value="1">
+                            </div>
+                        </div>
+                        <div class="account-row">
+                            <div class="account-field">
+                                <label for="maxConcurrentEpisodes">Parallel Episoden pro Serie</label>
+                                <input type="number" id="maxConcurrentEpisodes" min="1" max="10" value="1">
+                            </div>
+                        </div>
+                        <div class="account-row action-row">
+                            <button type="submit" class="link-btn">Save Download Settings</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- User Management Section -->
+            {% if auth_enabled and user.is_admin %}
+            <section class="account-section">
+                <div class="section-left">
+                    <h2>Users</h2>
+                </div>
+                <div class="section-right">
+                    <div class="admin-controls">
+                        <h3>Add New User</h3>
+                        <form id="addUserForm" class="account-form horizontal-form">
+                            <input type="text" id="newUsername" placeholder="Username" required minlength="3">
+                            <input type="password" id="newUserPassword" placeholder="Password" required minlength="6">
+                            <label class="checkbox-label"><input type="checkbox" id="newIsAdmin"> Admin</label>
+                            <button type="submit" class="link-btn">Add User</button>
+                        </form>
+
+                        <h3>Existing Users</h3>
+                        <div class="account-table-wrapper">
+                            <table class="account-table">
+                                <thead>
+                                    <tr>
+                                        <th>Username</th>
+                                        <th>Role</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="usersTableBody">
+                                    {% for u in users %}
+                                    <tr data-user-id="{{ u.id }}">
+                                        <td>{{ u.username }}</td>
+                                        <td>{{ 'Original Admin' if u.is_original_admin else ('Admin' if u.is_admin else 'User') }}</td>
+                                        <td>
+                                            {% if u.id != user.id and not u.is_original_admin %}
+                                            <button class="link-btn danger delete-user" data-user-id="{{ u.id }}" data-username="{{ u.username }}">Delete</button>
+                                            {% elif u.is_original_admin %}
+                                            <span class="text-muted small">Protected</span>
+                                            {% else %}
+                                            <span class="text-muted small">You</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Success/Error Messages -->
+    <div id="message-container" class="message-container"></div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Theme handling
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            document.body.setAttribute('data-theme', savedTheme);
+            
+            // Adjust navbar on scroll
+            const navbar = document.querySelector('.navbar');
+            window.addEventListener('scroll', () => {
+                if (window.scrollY > 0) {
+                    navbar.classList.add('scrolled');
+                } else {
+                    if (!document.body.classList.contains('settings-page')) {
+                        navbar.classList.remove('scrolled');
+                    }
+                }
+            });
+
+            // Load settings
+            loadSettings();
+            loadLanguagePreferences();
+            loadProviderPreferences();
+            loadDownloadSettings();
+
+            // User dropdown functionality
+            const userDropdownBtn = document.getElementById('user-dropdown-btn');
+            const userDropdownMenu = document.getElementById('user-dropdown-menu');
+
+            if (userDropdownBtn && userDropdownMenu) {
+                userDropdownBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    userDropdownMenu.classList.toggle('show');
+                });
+
+                document.addEventListener('click', function() {
+                    userDropdownMenu.classList.remove('show');
+                });
+            }
+
+            async function loadSettings() {
+                try {
+                    const response = await fetch('/api/download-path');
+                    const data = await response.json();
+                    
+                    const seriesPathInput = document.getElementById('seriesDownloadPath');
+                    if (seriesPathInput && data.series_path) {
+                        seriesPathInput.value = data.series_path;
+                    }
+                    
+                    const moviePathInput = document.getElementById('movieDownloadPath');
+                    if (moviePathInput && data.movie_path) {
+                        moviePathInput.value = data.movie_path;
+                    }
+                } catch (error) {
+                    console.error('Failed to load settings:', error);
+                }
+            }
+
+            async function loadLanguagePreferences() {
+                try {
+                    const response = await fetch('/api/settings/language-preferences');
+                    const data = await response.json();
+                    if (data.success) {
+                        if (data.lankabeltv) {
+                            const aniSelects = document.querySelectorAll('.lankabeltv-pref');
+                            data.lankabeltv.forEach((val, i) => {
+                                if (aniSelects[i]) aniSelects[i].value = val;
+                            });
+                        }
+                        if (data.sto) {
+                            const stoSelects = document.querySelectorAll('.sto-pref');
+                            data.sto.forEach((val, i) => {
+                                if (stoSelects[i]) stoSelects[i].value = val;
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to load language preferences:', error);
+                }
+            }
+
+            async function loadDownloadSettings() {
+                try {
+                    const response = await fetch('/api/settings/downloads');
+                    const data = await response.json();
+                    if (data.success) {
+                        const seriesInput = document.getElementById('maxConcurrentSeries');
+                        const episodesInput = document.getElementById('maxConcurrentEpisodes');
+                        if (seriesInput && data.max_concurrent_series) {
+                            seriesInput.value = data.max_concurrent_series;
+                        }
+                        if (episodesInput && data.max_concurrent_episodes) {
+                            episodesInput.value = data.max_concurrent_episodes;
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to load download settings:', error);
+                }
+            }
+
+            async function loadProviderPreferences() {
+                try {
+                    const response = await fetch('/api/settings/provider-preferences');
+                    const data = await response.json();
+                    if (data.success) {
+                        if (data.lankabeltv) {
+                            const aniSelects = document.querySelectorAll('.lankabeltv-prov-pref');
+                            data.lankabeltv.forEach((val, i) => {
+                                if (aniSelects[i]) aniSelects[i].value = val;
+                            });
+                        }
+                        if (data.sto) {
+                            const stoSelects = document.querySelectorAll('.sto-prov-pref');
+                            data.sto.forEach((val, i) => {
+                                if (stoSelects[i]) stoSelects[i].value = val;
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to load provider preferences:', error);
+                }
+            }
+
+            const setupForm = (id, url, getData) => {
+                const form = document.getElementById(id);
+                if (form) {
+                    form.addEventListener('submit', async function(e) {
+                        e.preventDefault();
+                        try {
+                            const response = await fetch(url, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(getData())
+                            });
+                            const data = await response.json();
+                            if (data.success) showMessage(data.message, 'success');
+                            else showMessage(data.error, 'error');
+                        } catch (error) {
+                            showMessage('Error: ' + error.message, 'error');
+                        }
+                    });
+                }
+            };
+
+            setupForm('languagePreferencesForm', '/api/settings/language-preferences', () => ({
+                lankabeltv: Array.from(document.querySelectorAll('.lankabeltv-pref')).map(s => s.value).filter(v => v !== ""),
+                sto: Array.from(document.querySelectorAll('.sto-pref')).map(s => s.value).filter(v => v !== "")
+            }));
+
+            setupForm('providerPreferencesForm', '/api/settings/provider-preferences', () => ({
+                lankabeltv: Array.from(document.querySelectorAll('.lankabeltv-prov-pref')).map(s => s.value).filter(v => v !== ""),
+                sto: Array.from(document.querySelectorAll('.sto-prov-pref')).map(s => s.value).filter(v => v !== "")
+            }));
+
+            setupForm('downloadSettingsForm', '/api/settings/downloads', () => ({
+                max_concurrent_series: document.getElementById('maxConcurrentSeries').value,
+                max_concurrent_episodes: document.getElementById('maxConcurrentEpisodes').value
+            }));
+
+            setupForm('systemSettingsForm', '/api/download-path', () => ({
+                series_path: document.getElementById('seriesDownloadPath').value,
+                movie_path: document.getElementById('movieDownloadPath').value
+            }));
+
+            const changePasswordForm = document.getElementById('changePasswordForm');
+            if (changePasswordForm) {
+                changePasswordForm.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    const currentPassword = document.getElementById('currentPassword').value;
+                    const newPassword = document.getElementById('newPassword').value;
+                    const confirmNewPassword = document.getElementById('confirmNewPassword').value;
+
+                    if (newPassword !== confirmNewPassword) {
+                        showMessage('New passwords do not match', 'error');
+                        return;
+                    }
+                    try {
+                        const response = await fetch('/api/change-password', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+                        });
+                        const data = await response.json();
+                        if (data.success) {
+                            showMessage(data.message, 'success');
+                            changePasswordForm.reset();
+                        } else showMessage(data.error, 'error');
+                    } catch (error) { showMessage('Error: ' + error.message, 'error'); }
+                });
+            }
+
+            const logoutBtn = document.getElementById('logout-btn');
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', async function() {
+                    const response = await fetch('/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+                    const data = await response.json();
+                    if (data.success) window.location.href = data.redirect;
+                });
+            }
+
+            const addUserForm = document.getElementById('addUserForm');
+            if (addUserForm) {
+                addUserForm.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    const username = document.getElementById('newUsername').value;
+                    const password = document.getElementById('newUserPassword').value;
+                    const isAdmin = document.getElementById('newIsAdmin').checked;
+                    try {
+                        const response = await fetch('/api/users', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username, password, is_admin: isAdmin })
+                        });
+                        const data = await response.json();
+                        if (data.success) {
+                            showMessage(data.message, 'success');
+                            addUserForm.reset();
+                            loadUsers();
+                        } else showMessage(data.error, 'error');
+                    } catch (error) { showMessage('Error: ' + error.message, 'error'); }
+                });
+            }
+
+            document.addEventListener('click', async function(e) {
+                if (e.target.closest('.delete-user')) {
+                    const button = e.target.closest('.delete-user');
+                    const userId = button.dataset.userId;
+                    const username = button.dataset.username;
+                    if (confirm(`Are you sure you want to delete user "${username}"?`)) {
+                        const response = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
+                        const data = await response.json();
+                        if (data.success) {
+                            showMessage(data.message, 'success');
+                            loadUsers();
+                        }
+                    }
+                }
+            });
+
+            async function loadUsers() {
+                const response = await fetch('/api/users');
+                const data = await response.json();
+                if (data.success) {
+                    const tbody = document.getElementById('usersTableBody');
+                    const currentUserId = {{ user.id if user else 0 }};
+                    tbody.innerHTML = data.users.map(u => `
+                        <tr data-user-id="${u.id}">
+                            <td>${u.username}</td>
+                            <td>${u.is_original_admin ? 'Original Admin' : (u.is_admin ? 'Admin' : 'User')}</td>
+                            <td>
+                                ${u.id !== currentUserId && !u.is_original_admin ?
+                                    `<button class="link-btn danger delete-user" data-user-id="${u.id}" data-username="${u.username}">Delete</button>` :
+                                    (u.is_original_admin ? '<span class="text-muted small">Protected</span>' : '<span class="text-muted small">You</span>')
+                                }
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+            }
+
+            function showMessage(message, type) {
+                const container = document.getElementById('message-container');
+                if (!container) return;
+                
+                const messageEl = document.createElement('div');
+                messageEl.className = `message ${type}`;
+                messageEl.style.position = 'fixed';
+                messageEl.style.bottom = '20px';
+                messageEl.style.right = '20px';
+                messageEl.style.padding = '15px 25px';
+                messageEl.style.borderRadius = '4px';
+                messageEl.style.zIndex = '9999';
+                messageEl.style.display = 'flex';
+                messageEl.style.alignItems = 'center';
+                messageEl.style.gap = '15px';
+                messageEl.style.boxShadow = '0 4px 12px rgba(0,0,0,0.5)';
+                messageEl.style.animation = 'modalFadeIn 0.3s ease-out';
+                
+                if (type === 'success') {
+                    messageEl.style.backgroundColor = '#46d369';
+                    messageEl.style.color = '#fff';
+                } else {
+                    messageEl.style.backgroundColor = '#e50914';
+                    messageEl.style.color = '#fff';
+                }
+
+                messageEl.innerHTML = `
+                    <span style="font-weight: 700;">${message}</span>
+                    <button class="message-close" style="background:none; border:none; color:#fff; cursor:pointer; font-size:20px;">&times;</button>
+                `;
+                
+                container.appendChild(messageEl);
+                setTimeout(() => { if (messageEl.parentNode) messageEl.parentNode.removeChild(messageEl); }, 5000);
+                messageEl.querySelector('.message-close').addEventListener('click', () => { if (messageEl.parentNode) messageEl.parentNode.removeChild(messageEl); });
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+requests
+bs4
+yt-dlp
+npyscreen
+tqdm
+fake_useragent
+packaging
+jsbeautifier
+flask
+dnspython

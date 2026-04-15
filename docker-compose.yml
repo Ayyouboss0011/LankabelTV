@@ -1,0 +1,19 @@
+services:
+  lankabeltv:
+    container_name: lankabeltv-downloader
+    build: .
+    image: lankabeltv-new
+    command: ["lankabeltv", "--web-ui", "--web-port", "${WEB_PORT:-3005}", "--no-browser", "--web-expose"]
+    ports:
+      - "${WEB_PORT:-3005}:${WEB_PORT:-3005}"
+    volumes:
+      - ${SERIES_DOWNLOAD_DIR}:/app/downloads/series
+      - ${MOVIE_DOWNLOAD_DIR}:/app/downloads/movies
+      - lankabeltv-data:/app/data
+    environment:
+      - SERIES_DOWNLOAD_PATH=/app/downloads/series
+      - MOVIE_DOWNLOAD_PATH=/app/downloads/movies
+    restart: unless-stopped
+
+volumes:
+  lankabeltv-data:

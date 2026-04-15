@@ -1,0 +1,7 @@
+include src/lankabeltv/ASCII.txt
+include src/lankabeltv/web/templates/index.html
+include src/lankabeltv/web/templates/login.html
+include src/lankabeltv/web/templates/settings.html
+include src/lankabeltv/web/templates/setup.html
+include src/lankabeltv/web/static/css/style.css
+include src/lankabeltv/web/static/js/app.js
