@@ -1,6 +1,6 @@
-# LankabelTV 📺
-
 <div align="center">
+  <img src="Photos/LankabelTV_Logo.png" alt="LankabelTV Logo" width="300" style="margin-bottom: 20px;">
+  <br>
   <a href="https://www.buymeacoffee.com/ayyouboss" target="_blank">
     <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" >
   </a>
