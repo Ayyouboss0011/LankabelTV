@@ -743,6 +743,11 @@ body {
 
 .nav-tab { position: relative; }
 
+/* Modal body lock */
+body.modal-open {
+    overflow: hidden !important;
+}
+
 /* Site Badge styling */
 .site-badge {
     padding: 2px 4px;

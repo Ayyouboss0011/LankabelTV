@@ -140,7 +140,7 @@ export const Download = {
         }
 
         if (this.elements.downloadModal) {
-            this.elements.downloadModal.style.display = 'flex';
+            this.elements.downloadModal.style.display = 'block';
             document.body.classList.add('modal-open');
         }
     },
@@ -280,11 +280,20 @@ export const Download = {
 
         let selectedProv = this.state.episodeProviderSelections[episodeUrl];
         if (!selectedProv) {
-            selectedProv = sitePrefs?.find(pref => providers.includes(pref)) || providers[0];
+            selectedProv = sitePrefs?.find(pref => providers.includes(pref));
+            if (!selectedProv) {
+                selectedProv = providers.includes('VOE') ? 'VOE' : providers[0];
+            }
             this.state.episodeProviderSelections[episodeUrl] = selectedProv;
         }
 
-        providers.forEach(prov => {
+        const sortedProviders = [...providers].sort((a, b) => {
+            if (a === 'VOE') return -1;
+            if (b === 'VOE') return 1;
+            return a.localeCompare(b);
+        });
+
+        sortedProviders.forEach(prov => {
             const badge = document.createElement('span');
             badge.className = 'provider-badge' + (prov === selectedProv ? ' active' : '');
             badge.textContent = prov.substring(0, 3).toUpperCase();
@@ -327,7 +336,10 @@ export const Download = {
                 <div class="season-header" data-season="${seasonNum}">
                     <input type="checkbox" class="season-checkbox" id="season-${seasonNum}" style="accent-color: var(--netflix-red);">
                     <label class="season-label" style="font-weight:700;">Season ${seasonNum}</label>
-                    <div class="season-lang-badges"></div>
+                    <div style="display: flex; gap: 15px; margin-left: auto;">
+                        <div class="season-lang-badges"></div>
+                        <div class="season-provider-badges"></div>
+                    </div>
                 </div>
                 <div class="episodes-container" style="display:none;"></div>
             `;
@@ -369,6 +381,7 @@ export const Download = {
             });
             this.elements.episodeTree.appendChild(seasonContainer);
             this.updateSeasonLanguageBadges(seasonNum);
+            this.updateSeasonProviderBadges(seasonNum);
         });
         this.updateSelectedCount();
         if (episodesToVerify.length > 0) this.autoVerifyEpisodeLanguages(episodesToVerify);
@@ -406,7 +419,43 @@ export const Download = {
         });
     },
 
-    updateSeasonProviderBadges() {}, // Simplified for Netflix
+    updateSeasonProviderBadges(seasonNum) {
+        const season = this.state.availableEpisodes[seasonNum];
+        const header = this.elements.episodeTree.querySelector(`.season-header[data-season="${seasonNum}"]`);
+        const badgesContainer = header?.querySelector('.season-provider-badges');
+        if (!season || !badgesContainer) return;
+
+        const allProvs = new Set();
+        season.forEach(ep => ep.providers?.forEach(p => allProvs.add(p)));
+        if (allProvs.size === 0) return;
+
+        badgesContainer.innerHTML = '';
+        const sortedProvs = Array.from(allProvs).sort((a, b) => {
+            if (a === 'VOE') return -1;
+            if (b === 'VOE') return 1;
+            return a.localeCompare(b);
+        });
+
+        sortedProvs.forEach(prov => {
+            const badge = document.createElement('span');
+            badge.className = 'season-provider-badge';
+            badge.textContent = prov.substring(0, 3).toUpperCase();
+            badge.title = `Apply ${prov} to Season ${seasonNum}`;
+            badge.addEventListener('click', (e) => {
+                e.stopPropagation();
+                season.forEach(ep => {
+                    if (ep.providers?.includes(prov)) {
+                        this.state.episodeProviderSelections[ep.url] = prov;
+                        const epProvWrapper = document.querySelector(`.episode-provider-wrapper[data-episode-url="${ep.url}"]`);
+                        epProvWrapper?.querySelectorAll('.provider-badge').forEach(b => b.classList.toggle('active', b.title === prov));
+                    }
+                });
+                badgesContainer.querySelectorAll('.season-provider-badge').forEach(b => b.classList.remove('active'));
+                badge.classList.add('active');
+            });
+            badgesContainer.appendChild(badge);
+        });
+    },
 
     toggleSeason(seasonNum, isChecked) {
         this.state.availableEpisodes[seasonNum].forEach(episode => {
