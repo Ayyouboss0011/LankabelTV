@@ -75,6 +75,26 @@ docker-compose up -d --build
 ```
 *By default, your downloads will be saved in the mounted `./downloads` directory.*
 
+## ⚙️ TMDB API Setup
+
+LankabelTV uses The Movie Database (TMDB) API to automatically enrich series and anime with posters, descriptions, ratings, and backdrop images.
+
+### How to get your TMDB API Keys:
+
+1. **Create a TMDB account**: Go to [themoviedb.org](https://www.themoviedb.org/) and sign up for a free account.
+
+2. **Generate API Keys**: After logging in, go to [Settings → API](https://www.themoviedb.org/settings/api) and request an API key. You will receive:
+   - **API Key (v3 auth)** – a 32-character hexadecimal key
+   - **API Token (v4 auth)** – a JWT token
+
+3. **Configure your environment**: Add the keys to your `.env` file:
+   ```env
+   TMDB_API_KEY=your_api_key_here
+   TMDB_API_TOKEN=your_api_token_here
+   ```
+
+Without these keys, TMDB metadata enrichment (posters, descriptions, ratings) will not work in the Web UI.
+
 ## 🛠️ Technologies
 
 LankabelTV is built on a robust Python stack:

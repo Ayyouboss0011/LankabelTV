@@ -3,7 +3,7 @@ services:
     container_name: lankabeltv-downloader
     build: .
     image: lankabeltv-new
-    command: ["lankabeltv", "--web-ui", "--web-port", "${WEB_PORT:-3005}", "--no-browser", "--web-expose"]
+    command: ["lankabeltv", "--port", "${WEB_PORT:-3005}", "--no-browser", "--expose"]
     ports:
       - "${WEB_PORT:-3005}:${WEB_PORT:-3005}"
     volumes:

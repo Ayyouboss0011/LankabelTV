@@ -29,9 +29,9 @@ SUPPORTED_SITES = {
     "s.to": {"base_url": S_TO, "stream_path": "serie"},
 }
 
-# TMDB Configuration
-TMDB_API_KEY = "4f509788a326ce1abfa96278d3e20c2b"
-TMDB_API_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI0ZjUwOTc4OGEzMjZjZTFhYmZhOTYyNzhkM2UyMGMyYiIsIm5iZiI6MTc3MDMzNTAyMi4zMTcsInN1YiI6IjY5ODUyYjJlY2VkNmNjZjE1NjI4OTk3NiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.cAH77EbKSgiiOdRT2yc3mZK1oKHcdlF9q9WnwGu9Tac"
+# TMDB Configuration (read from environment variables, with fallback defaults)
+TMDB_API_KEY = os.getenv("TMDB_API_KEY", "4f509788a326ce1abfa96278d3e20c2b")
+TMDB_API_TOKEN = os.getenv("TMDB_API_TOKEN", "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI0ZjUwOTc4OGEzMjZjZTFhYmZhOTYyNzhkM2UyMGMyYiIsIm5iZiI6MTc3MDMzNTAyMi4zMTcsInN1YiI6IjY5ODUyYjJlY2VkNmNjZjE1NjI4OTk3NiIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.cAH77EbKSgiiOdRT2yc3mZK1oKHcdlF9q9WnwGu9Tac")
 
 #########################################################################################
 # DNS Configuration (Cloudflare 1.1.1.1)

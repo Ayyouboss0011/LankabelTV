@@ -28,7 +28,7 @@ services:
     container_name: lankabeltv-downloader-vpn
     build: .
     image: lankabeltv-new
-    command: ["lankabeltv", "--web-ui", "--web-port", "${WEB_PORT:-3005}", "--no-browser", "--web-expose", "--output-dir", "/app/downloads"]
+    command: ["lankabeltv", "--port", "${WEB_PORT:-3005}", "--no-browser", "--expose"]
     network_mode: service:gluetun
     depends_on:
       - gluetun
