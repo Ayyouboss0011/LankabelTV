@@ -161,9 +161,13 @@ export const Queue = {
             }
 
             qItem.querySelector('.queue-progress-fill').style.width = `${prog}%`;
+            const epMsg = item.current_episode ? escapeHtml(item.current_episode) : '';
+            const isPostProcessing = epMsg.toLowerCase().includes('post-processing') || epMsg.toLowerCase().includes('finalizing');
+            const epStatusBadge = isPostProcessing
+                ? ` • <span style="color:#4fc3f7; font-weight:600;">${epMsg}</span>`
+                : (epMsg ? ` • <span style="color:#eee;">${epMsg}</span>` : '');
             qItem.querySelector('.queue-progress-text').innerHTML = `
-                ${prog.toFixed(1)}% • ${item.completed_episodes}/${item.total_episodes} Episodes
-                ${item.current_episode ? ` • <span style="color:#eee;">${escapeHtml(item.current_episode)}</span>` : ''}
+                ${prog.toFixed(1)}% • ${item.completed_episodes}/${item.total_episodes} Episodes${epStatusBadge}
             `;
 
             const list = qItem.querySelector('.queue-episode-list');
@@ -228,11 +232,17 @@ export const Queue = {
             const epEl = document.createElement('div');
             epEl.className = 'queue-episode-item';
             const isCompleted = ep.status === 'completed' || ep.status === 'failed' || ep.status === 'cancelled';
-            
+            // Map internal status to user-friendly label.
+            let statusLabel = ep.status;
+            let statusClass = ep.status;
+            if (ep.status === 'downloading' && parseFloat(ep.progress) >= 99) {
+                statusLabel = 'post-processing';
+                statusClass = 'post-processing';
+            }
             epEl.innerHTML = `
                 <div class="ep-info">
                     <span class="ep-title">${escapeHtml(ep.title || ep.name || 'Episode ' + (index + 1))}</span>
-                    <span class="ep-status-text ${ep.status}">${ep.status}</span>
+                    <span class="ep-status-text ${statusClass}">${statusLabel}</span>
                 </div>
                 <div class="ep-actions">
                     ${!isCompleted ? `<button class="ep-stop-btn" title="Cancel Episode"><i class="fas fa-times"></i></button>` : ''}

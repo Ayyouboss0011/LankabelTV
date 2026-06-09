@@ -320,6 +320,40 @@ body {
     opacity: 1;
 }
 
+/* Card Loading State */
+.anime-card.card-loading {
+    cursor: wait;
+}
+
+.anime-card.card-loading img {
+    opacity: 0.4;
+    transition: opacity 0.2s ease;
+}
+
+.anime-card.card-loading .card-overlay {
+    opacity: 1 !important;
+    background: rgba(0, 0, 0, 0.6);
+    justify-content: center;
+    align-items: center;
+}
+
+.anime-card.card-loading .card-overlay .card-title,
+.anime-card.card-loading .card-overlay .card-info,
+.anime-card.card-loading .card-overlay .card-actions {
+    display: none;
+}
+
+.anime-card.card-loading .card-overlay::after {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    border-top-color: var(--netflix-red);
+    animation: spin 1s ease-in-out infinite;
+}
+
 .card-title {
     font-size: 0.9rem;
     font-weight: 700;
@@ -654,6 +688,9 @@ body {
 .ep-status-text.downloading { color: #46d369; }
 .ep-status-text.completed { color: #3b82f6; }
 .ep-status-text.failed { color: var(--netflix-red); }
+.ep-status-text.post-processing { color: #4fc3f7; }
+
+.queue-item-status.post-processing { color: #4fc3f7; }
 
 .ep-stop-btn {
     background: transparent;

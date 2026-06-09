@@ -544,7 +544,11 @@ class DownloadQueueManager:
         # Fix F: Stale-job detection. If a job has been in "downloading" state
         # without any activity for this many seconds, force it to "failed" so
         # the user is not stuck on a non-responsive queue entry.
-        stale_job_threshold_seconds = 1800  # 30 minutes with no heartbeat
+        # User requested aggressive 20s timeout to recover from hangs at e.g. 97.7%
+        # (where yt-dlp post-processing can stall without firing progress hooks).
+        # Heartbeats from the post-processing hook in web_progress_callback keep
+        # legitimate downloads alive; only true hangs trigger this.
+        stale_job_threshold_seconds = 20
         while self.is_processing and not self._stop_event.is_set():
             try:
                 # Clean up finished threads
@@ -625,6 +629,14 @@ class DownloadQueueManager:
         except Exception as e:
             logging.error(f"Worker error for job {queue_id}: {e}", exc_info=True)
             self._update_download_status(queue_id, "failed", error_message=f"Worker Error: {e}")
+        finally:
+            # Defensive: always wake up the scheduler so the next queued job
+            # gets picked up immediately, even if _process_download_job
+            # returned without going through the normal completion path.
+            try:
+                self._scheduler_wakeup.set()
+            except Exception:
+                pass
 
     def _touch_job_heartbeat(self, queue_id):
         """Update the job-level heartbeat. Called from episode workers and
@@ -771,14 +783,17 @@ class DownloadQueueManager:
                                     if hb is None:
                                         continue
                                     age = time.time() - hb[0]
-                                    if age > 900:  # 15 minutes without progress
+                                    # 20s per-episode zombie timeout (user-requested aggressive).
+                                    # Post-processing hook keeps the heartbeat alive, so legitimate
+                                    # downloads are not flagged.
+                                    if age > 20:
                                         zombies.append(ep_url)
                     except RuntimeError:
                         # dict changed during iteration - just retry next loop
                         continue
                     for ep_url in zombies:
                         logging.error(
-                            "Job %s: Episode %s is unresponsive (no heartbeat for 15min) - marking as failed",
+                            "Job %s: Episode %s is unresponsive (no heartbeat for 20s) - marking as failed",
                             queue_id, ep_url,
                         )
                         with self._queue_lock:
@@ -1008,6 +1023,41 @@ class DownloadQueueManager:
                                     ep_item["last_heartbeat"] = time.time()
 
                     self.update_episode_progress(queue_id, p)
+
+                elif d["status"] == "processing" or d.get("postprocessor"):
+                    # yt-dlp post-processing phase (e.g. ffmpeg muxing).
+                    # Without a dedicated progress hook the UI used to appear
+                    # frozen at the last reported percentage (e.g. 97.7%) and
+                    # the 20s stale-job detector would fire. We now report
+                    # "Post-Processing..." and refresh the heartbeat here so
+                    # legitimate downloads are not flagged as stale.
+                    pp_name = d.get("postprocessor") or d.get("_postprocessor") or "ffmpeg"
+                    pp_status = d.get("status", "processing")
+                    with self._queue_lock:
+                        if queue_id in self._active_downloads:
+                            msg = f"Post-Processing {episode_info} ({pp_name})"
+                            self._active_downloads[queue_id]["current_episode"] = msg
+                            for ep_item in self._active_downloads[queue_id]["episodes"]:
+                                if ep_item["url"] == original_link:
+                                    ep_item["status"] = "downloading"
+                                    ep_item["last_heartbeat"] = time.time()
+                    # Pin the displayed episode progress to 99% so the user
+                    # sees clear visual feedback that the file is finishing.
+                    self.update_episode_progress(queue_id, 99.0)
+
+                elif d["status"] == "finished":
+                    # Final hook right before yt-dlp returns. Shows up as a
+                    # brief "Finalizing..." state to bridge the gap between
+                    # post-processing and the actual file-on-disk check.
+                    with self._queue_lock:
+                        if queue_id in self._active_downloads:
+                            self._active_downloads[queue_id]["current_episode"] = (
+                                f"Finalizing {episode_info}..."
+                            )
+                            for ep_item in self._active_downloads[queue_id]["episodes"]:
+                                if ep_item["url"] == original_link:
+                                    ep_item["status"] = "downloading"
+                                    ep_item["last_heartbeat"] = time.time()
 
             from ..action.download import download
             from ..action.common import sanitize_filename as _sanitize
