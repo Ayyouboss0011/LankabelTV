@@ -282,10 +282,12 @@ def _execute_download(
         return False
 
 
-def download(anime: Anime, web_progress_callback: Optional[Callable] = None) -> bool:
+def download(anime: Anime, web_progress_callback: Optional[Callable] = None, output_dir: Optional[str] = None) -> bool:
     """Download all episodes of an anime. Returns True if at least one download succeeded."""
     sanitized_anime_title = sanitize_filename(anime.title)
     any_success = False
+
+    effective_output_dir = output_dir or arguments.output_dir
 
     for episode in anime:
         # Print internal stats for debugging as requested by user
@@ -305,7 +307,7 @@ def download(anime: Anime, web_progress_callback: Optional[Callable] = None) -> 
 
         # Generate output path
         output_file = _get_output_filename(anime, episode, sanitized_anime_title)
-        output_path = Path(arguments.output_dir) / sanitized_anime_title / output_file
+        output_path = Path(effective_output_dir) / sanitized_anime_title / output_file
         
         print(f"  Output Path: {output_path}")
 

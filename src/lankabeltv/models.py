@@ -2,7 +2,6 @@ import importlib
 import json
 import logging
 import re
-from functools import lru_cache
 from typing import Dict, List, Optional, Tuple, Any
 
 import requests
@@ -746,7 +745,6 @@ class Episode:
                 f"Failed to extract episode from link '{self.link}': {err}"
             ) from err
 
-    @lru_cache(maxsize=32)
     def _get_available_languages_from_html(self) -> List[int]:
         """
         Extract available language codes from HTML with caching.
@@ -824,7 +822,6 @@ class Episode:
             logging.error("Error extracting language codes: %s", err)
             return []
 
-    @lru_cache(maxsize=32)
     def _get_providers_from_html(self) -> Dict[str, Dict[int, str]]:
         """
         Extract streaming providers from HTML with caching.
