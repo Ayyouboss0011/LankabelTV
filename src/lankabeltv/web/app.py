@@ -724,11 +724,15 @@ class WebApp:
         @self._require_api_auth
         def api_download():
             """Start download endpoint."""
+            import time as _time
+            _req_id = f"req-{int(_time.time()*1000)}-{id(self)}"
+            _t0 = _time.time()
+            logging.info(f"[DL-BACKEND] {_req_id} {_t0} api_download() ENTER")
             try:
                 from flask import request
 
                 data = request.get_json()
-                logging.info(f"[DEBUG] Received download request: {data}")
+                logging.info(f"[DL-BACKEND] {_req_id} Request parsed in {_time.time()-_t0:.3f}s, data keys: {list(data.keys()) if data else 'None'}")
 
                 # Check for both single episode (legacy) and multiple episodes (new)
                 episode_urls = data.get("episode_urls", [])
@@ -738,22 +742,21 @@ class WebApp:
                     episode_urls = [single_episode_url]
 
                 if not episode_urls:
-                    logging.warning("[DEBUG] Download request failed: No episode URLs provided")
+                    logging.warning(f"[DL-BACKEND] {_req_id} No episode URLs provided")
                     return jsonify(
                         {"success": False, "error": "Episode URL(s) required"}
                     ), 400
 
                 language = data.get("language", "German Sub")
                 provider = data.get("provider", "VOE")
-                
+
                 # Get per-episode configuration
                 episodes_config = data.get("episodes_config") or {}
 
                 # DEBUG: Log received parameters
                 logging.debug(
-                    f"WEB API RECEIVED - Language: '{language}', Provider: '{provider}'"
+                    f"[DL-BACKEND] {_req_id} Language: '{language}', Provider: '{provider}', Episodes: {len(episode_urls)}"
                 )
-                logging.debug(f"WEB API RECEIVED - Request data: {data}")
 
                 # Get current user for queue tracking
                 current_user = None
@@ -780,6 +783,8 @@ class WebApp:
                     ), 400
 
                 # Add to download queue (lightweight, no HTTP)
+                _t_add = _time.time()
+                logging.info(f"[DL-BACKEND] {_req_id} Calling download_manager.add_download()...")
                 queue_id = self.download_manager.add_download(
                     anime_title=anime_title,
                     episode_urls=episode_urls,
@@ -789,12 +794,16 @@ class WebApp:
                     created_by=current_user["id"] if current_user else None,
                     episodes_config=episodes_config,
                 )
+                _add_duration = _time.time() - _t_add
+                logging.info(f"[DL-BACKEND] {_req_id} add_download() RETURNED queue_id={queue_id} in {_add_duration:.3f}s")
 
                 if not queue_id:
                     return jsonify(
                         {"success": False, "error": "Failed to add download to queue"}
                     ), 500
 
+                _total_duration = _time.time() - _t0
+                logging.info(f"[DL-BACKEND] {_req_id} api_download() EXIT - sending success response, total time: {_total_duration:.3f}s")
                 return jsonify(
                     {
                         "success": True,
@@ -807,7 +816,8 @@ class WebApp:
                 )
 
             except Exception as err:
-                logging.error(f"Download error: {err}")
+                _total_duration = _time.time() - _t0
+                logging.error(f"[DL-BACKEND] {_req_id} api_download() EXCEPTION after {_total_duration:.3f}s: {err}", exc_info=True)
                 return jsonify(
                     {"success": False, "error": f"Failed to start download: {str(err)}"}
                 ), 500

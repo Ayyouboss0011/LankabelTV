@@ -238,6 +238,11 @@ def _execute_download(
     web_progress_callback: Optional[Callable] = None,
 ) -> bool:
     """Execute download using yt-dlp Python API with progress tracking."""
+    import time as _time
+    import threading as _threading
+    _yt_id = f"yt-{int(_time.time()*1000)}"
+    _t0 = _time.time()
+    logging.info(f"[YT-BACKEND] {_yt_id} _execute_download() START - thread={_threading.current_thread().name}, link={direct_link[:80]}..., output={output_path}")
     try:
         # Create CLI progress bar
         cli_progress = CliProgressBar(episode_title)
@@ -247,6 +252,22 @@ def _execute_download(
             # Update CLI progress
             cli_progress.update(d)
 
+            # Log status changes for diagnosis
+            status = d.get("status")
+            if status == "downloading" and d.get("_percent_str"):
+                # Only log occasionally to avoid spam
+                _pct = d.get("_percent_str", "0%")
+                try:
+                    _pct_val = float(_pct.replace("%", ""))
+                    if int(_pct_val) % 10 == 0 and _pct_val > 0:
+                        logging.info(f"[YT-BACKEND] {_yt_id} Download progress: {_pct}")
+                except (ValueError, TypeError):
+                    pass
+            elif status == "processing":
+                logging.info(f"[YT-BACKEND] {_yt_id} Post-processing started: {d.get('postprocessor', d.get('_postprocessor', 'unknown'))}")
+            elif status == "finished":
+                logging.info(f"[YT-BACKEND] {_yt_id} yt-dlp finished (file should be on disk now)")
+
             # Update web progress if callback provided
             if web_progress_callback:
                 try:
@@ -255,29 +276,38 @@ def _execute_download(
                     # Re-raise KeyboardInterrupt to stop download
                     raise
                 except Exception as e:
-                    logging.warning(f"Web progress callback error: {e}")
+                    logging.warning(f"[YT-BACKEND] {_yt_id} Web progress callback error: {e}")
 
         # Build yt-dlp options
         options = _build_ytdl_options(str(output_path), anime, combined_progress_hook)
 
         # Execute download with yt-dlp
+        logging.info(f"[YT-BACKEND] {_yt_id} Calling yt_dlp.YoutubeDL.download() - this may take a while (downloading + ffmpeg post-processing)")
+        _t_dl = _time.time()
         with yt_dlp.YoutubeDL(options) as ydl:
             ydl.download([direct_link])
+        _dl_dur = _time.time() - _t_dl
+        logging.info(f"[YT-BACKEND] {_yt_id} yt-dlp download() RETURNED in {_dl_dur:.1f}s")
 
         print("")  # New line after progress bar
+        _total_dur = _time.time() - _t0
+        logging.info(f"[YT-BACKEND] {_yt_id} _execute_download() SUCCESS - total: {_total_dur:.1f}s")
         return True
 
     except yt_dlp.DownloadError as e:
-        logging.error(f"yt-dlp download error: {e}")
+        _dur = _time.time() - _t0
+        logging.error(f"[YT-BACKEND] {_yt_id} yt-dlp DownloadError after {_dur:.1f}s: {e}")
         print(f"\n❌ Download failed: {e}")
         return False
     except KeyboardInterrupt:
-        logging.info("Download interrupted by user")
+        _dur = _time.time() - _t0
+        logging.warning(f"[YT-BACKEND] {_yt_id} KeyboardInterrupt after {_dur:.1f}s")
         print("\n⏹️ Download interrupted by user")
         _cleanup_partial_files(output_path.parent)
         raise
     except Exception as e:
-        logging.error(f"Unexpected download error: {e}")
+        _dur = _time.time() - _t0
+        logging.error(f"[YT-BACKEND] {_yt_id} Unexpected error after {_dur:.1f}s: {e}", exc_info=True)
         print(f"\n❌ Unexpected error: {e}")
         return False
 

@@ -514,12 +514,26 @@ export const Download = {
     },
 
     async startDownload() {
+        const callId = `dl-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+        console.log(`[DL-FRONTEND] ${new Date().toISOString()} [${callId}] startDownload() CALLED`);
         const isTrackerEnabled = this.elements.trackCheckbox?.checked;
         const count = this.state.selectedEpisodes.size;
-        if (!this.state.currentDownloadData || (count === 0 && !isTrackerEnabled)) return;
+        console.log(`[DL-FRONTEND] [${callId}] State:`, {
+            hasDownloadData: !!this.state.currentDownloadData,
+            selectedEpisodes: count,
+            trackerEnabled: isTrackerEnabled,
+            modalState: this.elements.downloadModal?.style.display,
+            buttonText: this.elements.confirmBtn?.textContent,
+            buttonDisabled: this.elements.confirmBtn?.disabled
+        });
+        if (!this.state.currentDownloadData || (count === 0 && !isTrackerEnabled)) {
+            console.warn(`[DL-FRONTEND] [${callId}] EARLY RETURN - no download data or no episodes selected`);
+            return;
+        }
 
         this.elements.confirmBtn.disabled = true;
         this.elements.confirmBtn.textContent = 'Starting...';
+        console.log(`[DL-FRONTEND] [${callId}] Button set to 'Starting...', disabled=true`);
         const trackingLang = this.elements.trackerLanguage?.value || 'German Dub';
 
         if (count === 0 && isTrackerEnabled) {
@@ -547,6 +561,11 @@ export const Download = {
                 overallLang = epLang; overallProv = epProv;
             }
         });
+        console.log(`[DL-FRONTEND] [${callId}] Prepared ${selectedUrls.length} episode URL(s)`, {
+            language: overallLang,
+            provider: overallProv,
+            urls: selectedUrls
+        });
 
         // Fix 5: Race the POST against a 5s timeout. If the backend is
         // genuinely slow, don't keep the button locked on "Starting..." -
@@ -558,12 +577,16 @@ export const Download = {
             timeoutHandle = setTimeout(() => reject(new Error('timeout')), 5000);
         });
 
+        const requestStartTime = performance.now();
+        console.log(`[DL-FRONTEND] [${callId}] ${requestStartTime.toFixed(2)} POST /api/download SENT (waiting up to 5s for response)`);
         try {
             const data = await Promise.race([
                 API.startDownload({ episode_urls: selectedUrls, language: overallLang, provider: overallProv, anime_title: this.state.currentDownloadData.anime, episodes_config: episodesConfig }),
                 timeoutPromise,
             ]);
+            const responseTime = performance.now() - requestStartTime;
             if (timeoutHandle) clearTimeout(timeoutHandle);
+            console.log(`[DL-FRONTEND] [${callId}] ${responseTime.toFixed(2)}ms POST /api/download RESPONSE:`, data);
             if (data && data.success) {
                 showNotification(`Started download for ${selectedUrls.length} eps`, 'success');
                 if (isTrackerEnabled) {
@@ -575,11 +598,12 @@ export const Download = {
                 showNotification(data.error || 'Failed', 'error');
             }
         } catch (err) {
+            const elapsedTime = performance.now() - requestStartTime;
             if (timeoutHandle) clearTimeout(timeoutHandle);
             // Timeout or network error: assume the request will eventually
             // succeed and close the modal. The queue status poller will
             // surface the job once the backend has registered it.
-            console.warn('[DEBUG] startDownload: request did not resolve within 5s, assuming success and closing modal:', err);
+            console.warn(`[DL-FRONTEND] [${callId}] ${elapsedTime.toFixed(2)}ms POST /api/download ${err.message === 'timeout' ? 'TIMEOUT' : 'ERROR'}:`, err);
             showNotification('Request sent, checking status...', 'info');
             if (isTrackerEnabled) {
                 try { await Trackers.addTrackerForSeries(this.state.currentDownloadData, this.state.availableEpisodes, trackingLang, overallProv); } catch (e) { /* ignore */ }
@@ -589,6 +613,7 @@ export const Download = {
         } finally {
             this.elements.confirmBtn.disabled = false;
             this.elements.confirmBtn.textContent = 'Start Download';
+            console.log(`[DL-FRONTEND] [${callId}] Button reset to 'Start Download', disabled=false`);
         }
     }
 };

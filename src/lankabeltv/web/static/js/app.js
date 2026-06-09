@@ -10,7 +10,7 @@ import { Queue } from './queue.js';
 import { Trackers } from './trackers.js';
 
 document.addEventListener('DOMContentLoaded', async function() {
-    console.log('LankabelTV Netflix-Style loaded');
+    console.log(`[APP-FRONTEND] ${new Date().toISOString()} DOMContentLoaded - initializing LankabelTV`);
 
     // UI Elements
     const tabHome = document.getElementById('tab-home');
@@ -64,6 +64,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 
     function switchTab(tabName) {
+        console.log(`[APP-FRONTEND] ${new Date().toISOString()} switchTab(${tabName})`);
         if (tabName === 'home') {
             tabHome?.classList.add('active');
             tabDownloads?.classList.remove('active');
@@ -74,6 +75,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             tabDownloads?.classList.add('active');
             if (mainView) mainView.style.display = 'none';
             if (downloadsView) downloadsView.style.display = 'block';
+            console.log(`[APP-FRONTEND] switchTab(downloads) - calling Queue.startTracking()`);
             Queue.startTracking();
             Trackers.updateDisplay();
         }
@@ -92,7 +94,16 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
     // Export showDownloadModal to window so anime cards can call it
-    window.showDownloadModal = (title, epTitle, url) => Download.showModal(title, epTitle, url);
+    window.showDownloadModal = (title, epTitle, url, cardElement) => {
+        // Show loading spinner on the card
+        if (cardElement) {
+            cardElement.classList.add('card-loading');
+            cardElement.style.pointerEvents = 'none';
+        }
+        
+        // Call the download modal - it will hide the card loading when done
+        Download.showModal(title, epTitle, url, cardElement);
+    };
 });
 
 window.showNotification = showNotification;

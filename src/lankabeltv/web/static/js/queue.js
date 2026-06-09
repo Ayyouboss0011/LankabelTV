@@ -23,16 +23,25 @@ export const Queue = {
     },
 
     async checkStatus() {
+        console.log(`[Q-FRONTEND] ${new Date().toISOString()} checkStatus() called`);
         try {
             const data = await API.getQueueStatus();
+            console.log(`[Q-FRONTEND] checkStatus() response:`, data);
             if (data.success && data.queue && (data.queue.active.length > 0 || data.queue.completed.length > 0)) {
+                console.log(`[Q-FRONTEND] checkStatus() found ${data.queue.active.length} active, ${data.queue.completed.length} completed - starting tracking`);
                 this.startTracking();
+            } else {
+                console.log(`[Q-FRONTEND] checkStatus() no active or completed downloads - skipping tracking`);
             }
-        } catch (err) { console.error('Failed to check queue status:', err); }
+        } catch (err) { console.error('[Q-FRONTEND] Failed to check queue status:', err); }
     },
 
     startTracking() {
-        if (this.state.progressInterval) return;
+        if (this.state.progressInterval) {
+            console.log(`[Q-FRONTEND] startTracking() - already tracking, skipping`);
+            return;
+        }
+        console.log(`[Q-FRONTEND] ${new Date().toISOString()} startTracking() - starting 2s polling interval`);
         this.updateDisplay();
         this.state.progressInterval = setInterval(() => this.updateDisplay(), 2000);
     },
@@ -42,12 +51,20 @@ export const Queue = {
     },
 
     async updateDisplay() {
+        const updateId = `upd-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+        const updateStartTime = performance.now();
         try {
             const data = await API.getQueueStatus();
-            if (!data.success) return;
+            const apiTime = performance.now() - updateStartTime;
+            if (!data.success) {
+                console.warn(`[Q-FRONTEND] [${updateId}] ${apiTime.toFixed(2)}ms updateDisplay() API returned success=false:`, data);
+                return;
+            }
             const active = data.queue.active || [];
             const completed = data.queue.completed || [];
-            
+            const totalTime = performance.now() - updateStartTime;
+            console.log(`[Q-FRONTEND] [${updateId}] ${apiTime.toFixed(2)}ms API / ${totalTime.toFixed(2)}ms total - ${active.length} active, ${completed.length} completed`);
+
             if (this.elements.downloadBadge) {
                 if (active.length > 0) {
                     this.elements.downloadBadge.textContent = active.length;
@@ -83,14 +100,14 @@ export const Queue = {
 
     updateQueueList(container, items) {
         if (!container) return;
-        
+
         const currentIds = items.map(item => item.id.toString());
-        
+
         // Remove items that are no longer in the list
         const existingItems = Array.from(container.querySelectorAll('.queue-item'));
         existingItems.forEach(el => {
             if (!currentIds.includes(el.dataset.id)) {
-                console.log(`[DEBUG] Removing item ${el.dataset.id} from UI`);
+                console.log(`[Q-FRONTEND] Removing item ${el.dataset.id} from UI (no longer in server response)`);
                 el.remove();
             }
         });
@@ -100,9 +117,15 @@ export const Queue = {
             const prog = Math.max(0, Math.min(100, parseFloat(item.progress_percentage || 0)));
             const isCompleted = item.status === 'completed' || item.status === 'failed';
             const isExpanded = this.state.expandedJobs.has(item.id);
-            
+
             if (!qItem) {
-                console.log(`[DEBUG] Creating new queue item UI for job ${item.id}`);
+                console.log(`[Q-FRONTEND] Creating new queue item UI for job ${item.id}:`, {
+                    status: item.status,
+                    progress: prog,
+                    current_episode: item.current_episode,
+                    completed: item.completed_episodes,
+                    total: item.total_episodes
+                });
                 qItem = document.createElement('div');
                 qItem.className = 'queue-item';
                 qItem.dataset.id = item.id;

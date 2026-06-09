@@ -337,6 +337,11 @@ class DownloadQueueManager:
         request thread therefore returns within milliseconds instead of
         blocking for 5-30s on HTTP requests to aniworld.to / s.to.
         """
+        import time as _time
+        import threading as _threading
+        _add_id = f"add-{int(_time.time()*1000)}-{_threading.current_thread().name}"
+        _t0 = _time.time()
+        logging.info(f"[DM-BACKEND] {_add_id} add_download() ENTER - thread={_threading.current_thread().name}, {len(episode_urls)} episode(s), title={anime_title!r}")
         is_movie = any("/filme/" in url for url in episode_urls)
         episodes = []
         for url in episode_urls:
@@ -393,27 +398,43 @@ class DownloadQueueManager:
         }
         self._active_downloads[queue_id] = job
         logging.info(
-            "[DEBUG] add_download: queued job %s (anime=%s, eps=%d, lang=%s, prov=%s)",
-            queue_id, anime_title, total_episodes, language, provider,
+            "[DM-BACKEND] {_add_id} Job {queue_id} created and added to _active_downloads (anime={anime_title!r}, eps={total_episodes}, lang={language}, prov={provider})".format(
+                _add_id=_add_id, queue_id=queue_id, anime_title=anime_title,
+                total_episodes=total_episodes, language=language, provider=provider,
+            )
         )
 
         # Fix 3: Auto-restart scheduler if its thread died for any reason.
         if hasattr(self, "scheduler_thread") and self.scheduler_thread is not None:
             if not self.scheduler_thread.is_alive():
                 logging.warning(
-                    "[DEBUG] add_download: scheduler thread is dead, restarting it "
-                    "(was is_processing=%s)", self.is_processing,
+                    "[DM-BACKEND] {_add_id} Scheduler thread is DEAD, restarting (was is_processing={is_processing})".format(
+                        _add_id=_add_id, is_processing=self.is_processing,
+                    )
                 )
                 self.is_processing = False
 
+        logging.info(
+            "[DM-BACKEND] {_add_id} Scheduler state: is_processing={is_processing}, thread_alive={thread_alive}".format(
+                _add_id=_add_id,
+                is_processing=self.is_processing,
+                thread_alive=getattr(self, "scheduler_thread", None) is not None and self.scheduler_thread.is_alive(),
+            )
+        )
+
         if not self.is_processing:
+            logging.info(f"[DM-BACKEND] {_add_id} Starting scheduler thread...")
             self.start_queue_processor()
         # Wake up the scheduler so it picks up the new job immediately.
         # Use a dedicated Event so we never block on the Condition lock.
         try:
             self._scheduler_wakeup.set()
-        except Exception:
-            pass
+            logging.info(f"[DM-BACKEND] {_add_id} _scheduler_wakeup.set() called")
+        except Exception as e:
+            logging.warning(f"[DM-BACKEND] {_add_id} _scheduler_wakeup.set() failed: {e}")
+
+        _duration = _time.time() - _t0
+        logging.info(f"[DM-BACKEND] {_add_id} add_download() EXIT - returning queue_id={queue_id}, duration={_duration:.3f}s")
         return queue_id
 
     def _resolve_job_anime_objects(self, queue_id):
@@ -549,12 +570,19 @@ class DownloadQueueManager:
         # Heartbeats from the post-processing hook in web_progress_callback keep
         # legitimate downloads alive; only true hangs trigger this.
         stale_job_threshold_seconds = 20
+        _sched_id = f"sched-{int(time.time()*1000)}"
+        _loop_count = 0
+        logging.info(f"[DM-BACKEND] {_sched_id} _queue_scheduler() STARTED")
         while self.is_processing and not self._stop_event.is_set():
+            _loop_count += 1
             try:
                 # Clean up finished threads
                 with self._worker_lock:
                     self.active_worker_threads = [t for t in self.active_worker_threads if t.is_alive()]
                     active_count = len(self.active_worker_threads)
+
+                if _loop_count % 5 == 0:
+                    logging.info(f"[DM-BACKEND] {_sched_id} Loop iter {_loop_count}: active_workers={active_count}, jobs_in_active={len(self._active_downloads)}, jobs_in_completed={len(self._completed_downloads)}")
 
                 # Stale-job scan (Fix F): detect jobs that have been "downloading"
                 # for too long without a heartbeat update, and force them to
@@ -575,9 +603,9 @@ class DownloadQueueManager:
                             stale_jobs.append(qid)
                 for qid in stale_jobs:
                     logging.error(
-                        "[DEBUG] Stale-job detector: job %s has been downloading "
-                        "for >%ds without activity - force-failing",
-                        qid, stale_job_threshold_seconds,
+                        "[DM-BACKEND] {_sched_id} Stale-job detector: job {qid} has been downloading for >{threshold}s without activity - force-failing".format(
+                            _sched_id=_sched_id, qid=qid, threshold=stale_job_threshold_seconds,
+                        )
                     )
                     self._update_download_status(
                         qid, "failed",
@@ -587,6 +615,7 @@ class DownloadQueueManager:
                 if active_count < self.max_concurrent_series:
                     job = self._get_next_queued_download()
                     if job:
+                        logging.info(f"[DM-BACKEND] {_sched_id} Picking up queued job {job['id']} - starting worker")
                         # Mark job as starting so it's not picked up again immediately
                         # We use 'downloading' but with a special message
                         self._update_download_status(job["id"], "downloading", current_episode="Initializing...")
@@ -597,7 +626,7 @@ class DownloadQueueManager:
                         with self._worker_lock:
                             self.active_worker_threads.append(worker)
                         worker.start()
-                        logging.info(f"Started worker for job {job['id']}. Active workers: {len(self.active_worker_threads)}")
+                        logging.info(f"[DM-BACKEND] {_sched_id} Worker thread started for job {job['id']}. Active workers: {len(self.active_worker_threads)}")
                         # Loop immediately to pick up more jobs if capacity allows
                         continue
                     else:
@@ -605,9 +634,13 @@ class DownloadQueueManager:
                         # We use the dedicated _scheduler_wakeup Event so
                         # this wait can never block add_download() callers
                         # that try to wake us up.
+                        if _loop_count % 20 == 0:  # Log occasionally when idle
+                            logging.info(f"[DM-BACKEND] {_sched_id} No queued jobs, waiting on _scheduler_wakeup (timeout 2s)")
                         self._scheduler_wakeup.wait(timeout=2.0)
                 else:
                     # All slots busy: wait for a worker to free up
+                    if _loop_count % 20 == 0:
+                        logging.info(f"[DM-BACKEND] {_sched_id} All {active_count} worker slot(s) busy (max={self.max_concurrent_series}), waiting on _scheduler_wakeup (timeout 2s)")
                     self._scheduler_wakeup.wait(timeout=2.0)
                 # Clear the event so the next wait() actually sleeps
                 self._scheduler_wakeup.clear()
@@ -617,19 +650,26 @@ class DownloadQueueManager:
 
     def _worker_wrapper(self, job):
         """Wrapper for the download job processing"""
+        import time as _time
+        import threading as _threading
         queue_id = job["id"]
-        logging.info("[DEBUG] _worker_wrapper: starting job %s (anime=%s, eps=%d)",
-                     queue_id, job.get("anime_title"), job.get("total_episodes"))
+        _wrk_id = f"wrk-{queue_id}-{int(_time.time()*1000)}"
+        _t0 = _time.time()
+        logging.info(f"[DM-BACKEND] {_wrk_id} _worker_wrapper() START - thread={_threading.current_thread().name}, job={queue_id} (anime={job.get('anime_title')!r}, eps={job.get('total_episodes')})")
         try:
             self._process_download_job(job)
-            logging.info("[DEBUG] _worker_wrapper: job %s finished normally", queue_id)
+            _dur = _time.time() - _t0
+            logging.info(f"[DM-BACKEND] {_wrk_id} _process_download_job() finished normally in {_dur:.1f}s")
         except KeyboardInterrupt:
-            logging.warning("[DEBUG] _worker_wrapper: job %s interrupted by KeyboardInterrupt", queue_id)
+            logging.warning(f"[DM-BACKEND] {_wrk_id} _worker_wrapper interrupted by KeyboardInterrupt")
             self._update_download_status(queue_id, "failed", error_message="Interrupted")
         except Exception as e:
-            logging.error(f"Worker error for job {queue_id}: {e}", exc_info=True)
+            _dur = _time.time() - _t0
+            logging.error(f"[DM-BACKEND] {_wrk_id} _worker_wrapper EXCEPTION after {_dur:.1f}s: {e}", exc_info=True)
             self._update_download_status(queue_id, "failed", error_message=f"Worker Error: {e}")
         finally:
+            _dur = _time.time() - _t0
+            logging.info(f"[DM-BACKEND] {_wrk_id} _worker_wrapper EXIT (total: {_dur:.1f}s) - waking scheduler")
             # Defensive: always wake up the scheduler so the next queued job
             # gets picked up immediately, even if _process_download_job
             # returned without going through the normal completion path.
@@ -658,12 +698,18 @@ class DownloadQueueManager:
                 pass
 
     def _process_download_job(self, job):
+        import time as _time
         queue_id = job["id"]
+        _proc_id = f"proc-{queue_id}-{int(_time.time()*1000)}"
+        _t0 = _time.time()
         try:
             logging.info(
-                "[DEBUG] _process_download_job[%s]: enter, urls=%d, lang=%s, prov=%s",
-                queue_id, len(job.get("episode_urls", [])),
-                job.get("language"), job.get("provider"),
+                "[DM-BACKEND] {_proc_id} _process_download_job() ENTER - urls={n_urls}, lang={lang}, prov={prov}".format(
+                    _proc_id=_proc_id,
+                    n_urls=len(job.get("episode_urls", [])),
+                    lang=job.get("language"),
+                    prov=job.get("provider"),
+                )
             )
             self._update_download_status(queue_id, "downloading", current_episode="Starting...")
             self._touch_job_heartbeat(queue_id)
@@ -682,10 +728,11 @@ class DownloadQueueManager:
                     queue_id, "downloading", current_episode="Resolving episodes...",
                 )
                 logging.info(
-                    "[DEBUG] _process_download_job[%s]: resolving anime objects from URLs",
-                    queue_id,
+                    "[DM-BACKEND] {_proc_id} Resolving anime objects from URLs (this may take 5-30s)".format(_proc_id=_proc_id)
                 )
+                _t_resolve = _time.time()
                 anime_list = self._resolve_job_anime_objects(queue_id)
+                logging.info(f"[DM-BACKEND] {_proc_id} Anime objects resolved in {_time.time()-_t_resolve:.1f}s, got {len(anime_list)} anime")
             else:
                 anime_list = job.get("_anime_objects") or []
                 logging.info(
