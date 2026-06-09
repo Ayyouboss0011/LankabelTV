@@ -45,6 +45,14 @@ class DownloadQueueManager:
         # job scheduler as soon as a slot frees up, instead of relying
         # on time-based polling.
         self._job_scheduler_cv = threading.Condition(threading.Lock())
+        # Dedicated event for cross-thread wakeups. Unlike a Condition
+        # variable, threading.Event.set() can be called from any thread
+        # WITHOUT acquiring a lock first, so notifying the scheduler
+        # from the Flask request thread (in add_download) can never
+        # block waiting for the scheduler to release its cv.wait lock.
+        # The scheduler does an Event.wait() once at the top of each
+        # loop iteration; if it was set, we just clear it and continue.
+        self._scheduler_wakeup = threading.Event()
 
         # In-memory download queue storage
         self._next_id = 1
@@ -289,13 +297,12 @@ class DownloadQueueManager:
                     # Wake up both the top-level scheduler and any worker
                     # currently blocked in cv.wait() so cancellation
                     # propagates immediately instead of after the 2s timeout.
-                    cv = self._job_scheduler_cv
-                    if cv is not None:
-                        try:
-                            with cv:
-                                cv.notify_all()
-                        except Exception:
-                            pass
+                    # Use a dedicated Event to avoid blocking on the
+                    # Condition's internal lock.
+                    try:
+                        self._scheduler_wakeup.set()
+                    except Exception:
+                        pass
                     logging.info(
                         "[DEBUG] Job %s marked as cancelled, scheduler notified",
                         queue_id,
@@ -396,14 +403,12 @@ class DownloadQueueManager:
 
         if not self.is_processing:
             self.start_queue_processor()
-        # Wake up the scheduler so it picks up the new job immediately
-        cv = self._job_scheduler_cv
-        if cv is not None:
-            try:
-                with cv:
-                    cv.notify_all()
-            except Exception:
-                pass
+        # Wake up the scheduler so it picks up the new job immediately.
+        # Use a dedicated Event so we never block on the Condition lock.
+        try:
+            self._scheduler_wakeup.set()
+        except Exception:
+            pass
         return queue_id
 
     def _resolve_job_anime_objects(self, queue_id):
@@ -481,7 +486,10 @@ class DownloadQueueManager:
         download is queued or when a worker slot frees up, instead of relying
         on fixed-interval polling.
         """
-        cv = self._job_scheduler_cv
+        # The Condition variable is no longer used here; we use the
+        # _scheduler_wakeup Event for inter-thread wakeups. The Condition
+        # is still kept as a backwards-compat attribute.
+        _ = self._job_scheduler_cv
         # Fix F: Stale-job detection. If a job has been in "downloading" state
         # without any activity for this many seconds, force it to "failed" so
         # the user is not stuck on a non-responsive queue entry.
@@ -538,19 +546,16 @@ class DownloadQueueManager:
                         # Loop immediately to pick up more jobs if capacity allows
                         continue
                     else:
-                        # No queued jobs: wait for someone to enqueue one
-                        if cv is not None:
-                            with cv:
-                                cv.wait(timeout=2.0)
-                        else:
-                            time.sleep(2)
+                        # No queued jobs: wait for someone to enqueue one.
+                        # We use the dedicated _scheduler_wakeup Event so
+                        # this wait can never block add_download() callers
+                        # that try to wake us up.
+                        self._scheduler_wakeup.wait(timeout=2.0)
                 else:
                     # All slots busy: wait for a worker to free up
-                    if cv is not None:
-                        with cv:
-                            cv.wait(timeout=2.0)
-                    else:
-                        time.sleep(2)
+                    self._scheduler_wakeup.wait(timeout=2.0)
+                # Clear the event so the next wait() actually sleeps
+                self._scheduler_wakeup.clear()
             except Exception as e:
                 logging.error(f"Scheduler error: {e}")
                 time.sleep(5)
@@ -572,10 +577,22 @@ class DownloadQueueManager:
 
     def _touch_job_heartbeat(self, queue_id):
         """Update the job-level heartbeat. Called from episode workers and
-        from the main loop. Used by the stale-job detector (Fix F)."""
-        with self._queue_lock:
-            if queue_id in self._active_downloads:
+        from the main loop. Used by the stale-job detector (Fix F).
+
+        Note: We previously held ``self._queue_lock`` here, but that
+        caused deadlocks when this method was called from the yt-dlp
+        progress hook (which can run at very high frequency while the
+        GIL is contended by a long-running socket read). Since the
+        heartbeat is just a timestamp, the worst case if we lose the
+        race is a slightly stale ``_last_activity`` value, which is
+        acceptable.
+        """
+        if queue_id in self._active_downloads:
+            try:
                 self._active_downloads[queue_id]["_last_activity"] = time.time()
+            except RuntimeError:
+                # dict changed during iteration - just skip this update
+                pass
 
     def _process_download_job(self, job):
         queue_id = job["id"]
@@ -662,7 +679,8 @@ class DownloadQueueManager:
 
             ep_iterator = iter(all_episodes_to_download)
             stop_job = False
-            cv = self._job_scheduler_cv
+            # _scheduler_wakeup is the cross-thread wakeup signal that
+            # the episode loop and the top-level scheduler both check.
 
             # Pre-cancel all not-yet-started episodes if the job is already cancelled
             if queue_id in self._cancelled_jobs:
@@ -687,11 +705,16 @@ class DownloadQueueManager:
                 # waiting forever on a stuck yt-dlp call.
                 if active_ep_threads:
                     zombies = []
-                    with self._queue_lock:
+                    # Snapshot data without holding the lock - we just want a
+                    # best-effort view, so a stale snapshot is fine. This
+                    # avoids blocking the queue lock for long.
+                    try:
                         for t in active_ep_threads:
                             if not t.is_alive():
                                 continue
-                            if queue_id in self._active_downloads:
+                            with self._queue_lock:
+                                if queue_id not in self._active_downloads:
+                                    continue
                                 heartbeats = self._active_downloads[queue_id].get("_ep_heartbeats", {})
                                 for ep_url, hb in list(heartbeats.items()):
                                     if hb is None:
@@ -699,6 +722,9 @@ class DownloadQueueManager:
                                     age = time.time() - hb[0]
                                     if age > 900:  # 15 minutes without progress
                                         zombies.append(ep_url)
+                    except RuntimeError:
+                        # dict changed during iteration - just retry next loop
+                        continue
                     for ep_url in zombies:
                         logging.error(
                             "Job %s: Episode %s is unresponsive (no heartbeat for 15min) - marking as failed",
@@ -773,26 +799,16 @@ class DownloadQueueManager:
                         t.start()
 
                         # Yield briefly so we don't spin if episode creation is slow
-                        if cv is not None:
-                            with cv:
-                                cv.wait(timeout=0.05)
+                        time.sleep(0.05)
 
                     except StopIteration:
                         if not active_ep_threads:
                             break
                         # No more episodes to start, wait for workers to finish
-                        if cv is not None:
-                            with cv:
-                                cv.wait(timeout=0.5)
-                        else:
-                            time.sleep(0.5)
+                        time.sleep(0.5)
                 else:
                     # All slots are busy - wait for a worker to signal completion
-                    if cv is not None:
-                        with cv:
-                            cv.wait(timeout=2.0)
-                    else:
-                        time.sleep(0.5)
+                    time.sleep(2.0)
 
             # Wait for remaining episode threads (with timeout to avoid hangs)
             join_deadline = time.time() + 30
@@ -1035,13 +1051,10 @@ class DownloadQueueManager:
                     self._active_downloads[queue_id]["_last_activity"] = time.time()
 
             # Notify the job-level scheduler that one slot is free
-            cv = self._job_scheduler_cv
-            if cv is not None:
-                try:
-                    with cv:
-                        cv.notify_all()
-                except Exception:
-                    pass
+            try:
+                self._scheduler_wakeup.set()
+            except Exception:
+                pass
 
     def _is_worker_alive_and_responsive(self, queue_id, original_link, max_age_seconds=600):
         """Check whether an episode worker is making progress (heartbeat).
@@ -1134,13 +1147,10 @@ class DownloadQueueManager:
                     job["current_episode"] = "Cancelled by user"
                     job["error_message"] = "All episodes cancelled"
                     # Wake up the worker thread
-                    cv = self._job_scheduler_cv
-                    if cv is not None:
-                        try:
-                            with cv:
-                                cv.notify_all()
-                        except Exception:
-                            pass
+                    try:
+                        self._scheduler_wakeup.set()
+                    except Exception:
+                        pass
 
         return result
 
@@ -1185,13 +1195,10 @@ class DownloadQueueManager:
                 notify_scheduler = True
         # Wake the scheduler outside the lock (Fix D)
         if notify_scheduler:
-            cv = self._job_scheduler_cv
-            if cv is not None:
-                try:
-                    with cv:
-                        cv.notify_all()
-                except Exception:
-                    pass
+            try:
+                self._scheduler_wakeup.set()
+            except Exception:
+                pass
         return True
 
 

@@ -41,4 +41,4 @@ RUN mkdir -p /app/downloads /app/data
 EXPOSE 8080
 
 # Set default command to run with web interface options
-CMD ["lankabeltv", "-w", "-wA", "-wN", "-wE", "-wP", "8080", "-o", "/app/downloads"]
+CMD ["lankabeltv", "--port", "8080", "--no-browser", "--expose"]
