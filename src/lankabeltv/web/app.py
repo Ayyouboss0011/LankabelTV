@@ -764,32 +764,22 @@ class WebApp:
                 # Determine anime title
                 anime_title = data.get("anime_title", "Unknown Anime")
 
-                # Calculate total episodes by checking episode URLs
-                from ..entry import _group_episodes_by_series
-
-                try:
-                    anime_list = _group_episodes_by_series(episode_urls)
-                    total_episodes = sum(
-                        len(anime.episode_list) for anime in anime_list
-                    )
-                except Exception as e:
-                    logging.error(f"Failed to process episode URLs: {e}")
-                    return jsonify(
-                        {
-                            "success": False,
-                            "error": "No valid anime objects could be created from provided URLs",
-                        }
-                    ), 400
-
+                # Fix 2 (Variant B): Skip the expensive URL→Anime resolution
+                # here. The number of episode URLs is good enough as a
+                # preliminary total; the actual Anime/Episode objects are
+                # resolved in the worker thread via
+                # ``_resolve_job_anime_objects()`` so the HTTP requests do
+                # not block the Flask request thread.
+                total_episodes = len(episode_urls)
                 if total_episodes == 0:
                     return jsonify(
                         {
                             "success": False,
-                            "error": "No valid anime objects could be created from provided URLs",
+                            "error": "Episode URL(s) required",
                         }
                     ), 400
 
-                # Add to download queue
+                # Add to download queue (lightweight, no HTTP)
                 queue_id = self.download_manager.add_download(
                     anime_title=anime_title,
                     episode_urls=episode_urls,

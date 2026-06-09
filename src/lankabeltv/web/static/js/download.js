@@ -68,7 +68,9 @@ export const Download = {
         } catch (err) { console.error('Failed to load provider preferences:', err); }
     },
 
-    async showModal(animeTitle, episodeTitle, episodeUrl) {
+    async showModal(animeTitle, episodeTitle, episodeUrl, cardElement = null) {
+        // Store cardElement for later use (to hide spinner)
+        this._cardElement = cardElement;
         this.state.currentSessionId++;
         if (this.elements.episodeTree) this.elements.episodeTree.innerHTML = '';
 
@@ -149,6 +151,12 @@ export const Download = {
         if (this.elements.downloadModal) {
             this.elements.downloadModal.style.display = 'none';
             document.body.classList.remove('modal-open');
+        }
+        // Hide card loading spinner
+        if (this._cardElement) {
+            this._cardElement.classList.remove('card-loading');
+            this._cardElement.style.pointerEvents = '';
+            this._cardElement = null;
         }
         if (this.elements.episodeTree) this.elements.episodeTree.innerHTML = '';
         this.state.currentDownloadData = null;
@@ -540,15 +548,47 @@ export const Download = {
             }
         });
 
+        // Fix 5: Race the POST against a 5s timeout. If the backend is
+        // genuinely slow, don't keep the button locked on "Starting..." -
+        // close the modal and let the queue status poller show the
+        // progress. If the POST resolves later, we just discard the
+        // result because the user is already on the downloads page.
+        let timeoutHandle = null;
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutHandle = setTimeout(() => reject(new Error('timeout')), 5000);
+        });
+
         try {
-            const data = await API.startDownload({ episode_urls: selectedUrls, language: overallLang, provider: overallProv, anime_title: this.state.currentDownloadData.anime, episodes_config: episodesConfig });
-            if (data.success) {
+            const data = await Promise.race([
+                API.startDownload({ episode_urls: selectedUrls, language: overallLang, provider: overallProv, anime_title: this.state.currentDownloadData.anime, episodes_config: episodesConfig }),
+                timeoutPromise,
+            ]);
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+            if (data && data.success) {
                 showNotification(`Started download for ${selectedUrls.length} eps`, 'success');
-                if (isTrackerEnabled) await Trackers.addTrackerForSeries(this.state.currentDownloadData, this.state.availableEpisodes, trackingLang, overallProv);
+                if (isTrackerEnabled) {
+                    try { await Trackers.addTrackerForSeries(this.state.currentDownloadData, this.state.availableEpisodes, trackingLang, overallProv); } catch (e) { /* ignore */ }
+                }
                 this.hideModal();
                 Queue.startTracking();
-            } else showNotification(data.error || 'Failed', 'error');
-        } catch (err) { showNotification('Error starting download', 'error'); }
-        finally { this.elements.confirmBtn.disabled = false; this.elements.confirmBtn.textContent = 'Start Download'; }
+            } else if (data && data.error) {
+                showNotification(data.error || 'Failed', 'error');
+            }
+        } catch (err) {
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+            // Timeout or network error: assume the request will eventually
+            // succeed and close the modal. The queue status poller will
+            // surface the job once the backend has registered it.
+            console.warn('[DEBUG] startDownload: request did not resolve within 5s, assuming success and closing modal:', err);
+            showNotification('Request sent, checking status...', 'info');
+            if (isTrackerEnabled) {
+                try { await Trackers.addTrackerForSeries(this.state.currentDownloadData, this.state.availableEpisodes, trackingLang, overallProv); } catch (e) { /* ignore */ }
+            }
+            this.hideModal();
+            Queue.startTracking();
+        } finally {
+            this.elements.confirmBtn.disabled = false;
+            this.elements.confirmBtn.textContent = 'Start Download';
+        }
     }
 };

@@ -321,7 +321,15 @@ class DownloadQueueManager:
                 del self._active_downloads[queue_id]; return True
             return False
 
-    def add_download(self, anime_title: str, episode_urls: list, language: str, provider: str, total_episodes: int, created_by: int = None, episodes_config: dict = None) -> int:
+    def add_download(self, anime_title: str, episode_urls: list, language: str, provider: str, total_episodes: int = 0, created_by: int = None, episodes_config: dict = None) -> int:
+        """Register a new download job and return its queue_id.
+
+        This is intentionally lightweight: the heavy lifting (resolving the
+        episode URLs into Anime/Episode objects via HTTP requests) is deferred
+        to the worker thread via ``_resolve_job_anime_objects()``. The Flask
+        request thread therefore returns within milliseconds instead of
+        blocking for 5-30s on HTTP requests to aniworld.to / s.to.
+        """
         is_movie = any("/filme/" in url for url in episode_urls)
         episodes = []
         for url in episode_urls:
@@ -332,16 +340,60 @@ class DownloadQueueManager:
                     s_num = next(p.split("-")[1] for p in parts if "staffel-" in p)
                     e_num = next(p.split("-")[1] for p in parts if "episode-" in p)
                     ep_name = f"S{s_num} E{e_num}"
-                except: pass
+                except Exception:
+                    pass
             episodes.append({"url": url, "name": ep_name, "status": "queued", "progress": 0.0, "speed": "", "eta": ""})
+
         with self._queue_lock:
-            queue_id = self._next_id; self._next_id += 1
-            job = {"id": queue_id, "anime_title": anime_title, "episode_urls": episode_urls, "episodes": episodes, "language": language, "provider": provider, "is_movie": is_movie, "episodes_config": episodes_config, "total_episodes": total_episodes, "completed_episodes": 0, "status": "queued", "current_episode": "", "progress_percentage": 0.0, "current_episode_progress": 0.0, "error_message": "", "created_by": created_by, "created_at": datetime.now(), "started_at": None, "completed_at": None, "_ep_heartbeats": {}, "_last_activity": time.time()}
+            queue_id = self._next_id
+            self._next_id += 1
+            # If total_episodes wasn't provided (or is 0), use the number of
+            # episode URLs as a fallback so the frontend has something to show.
+            if not total_episodes:
+                total_episodes = len(episode_urls)
+            job = {
+                "id": queue_id,
+                "anime_title": anime_title,
+                "episode_urls": episode_urls,
+                "episodes": episodes,
+                "language": language,
+                "provider": provider,
+                "is_movie": is_movie,
+                "episodes_config": episodes_config,
+                "total_episodes": total_episodes,
+                "completed_episodes": 0,
+                "status": "queued",
+                "current_episode": "",
+                "progress_percentage": 0.0,
+                "current_episode_progress": 0.0,
+                "error_message": "",
+                "created_by": created_by,
+                "created_at": datetime.now(),
+                "started_at": None,
+                "completed_at": None,
+                "_ep_heartbeats": {},
+                "_last_activity": time.time(),
+                # Flag set by the worker once the anime/episode objects have
+                # been resolved. Until then, _process_download_job will call
+                # _resolve_job_anime_objects() to do the heavy work.
+                "_anime_objects": None,
+                "_needs_resolution": True,
+            }
             self._active_downloads[queue_id] = job
             logging.info(
                 "[DEBUG] add_download: queued job %s (anime=%s, eps=%d, lang=%s, prov=%s)",
                 queue_id, anime_title, total_episodes, language, provider,
             )
+
+        # Fix 3: Auto-restart scheduler if its thread died for any reason.
+        if hasattr(self, "scheduler_thread") and self.scheduler_thread is not None:
+            if not self.scheduler_thread.is_alive():
+                logging.warning(
+                    "[DEBUG] add_download: scheduler thread is dead, restarting it "
+                    "(was is_processing=%s)", self.is_processing,
+                )
+                self.is_processing = False
+
         if not self.is_processing:
             self.start_queue_processor()
         # Wake up the scheduler so it picks up the new job immediately
@@ -353,6 +405,63 @@ class DownloadQueueManager:
             except Exception:
                 pass
         return queue_id
+
+    def _resolve_job_anime_objects(self, queue_id):
+        """Resolve episode URLs into Anime/Episode objects.
+
+        Runs in the job worker thread (not the Flask request thread) so that
+        the HTTP requests it makes do not block the web UI. Returns a list of
+        ``Anime`` objects (possibly empty on failure) and updates the job's
+        ``_anime_objects`` field for later reuse.
+        """
+        logging.info("[DEBUG] _resolve_job_anime_objects[%s]: starting", queue_id)
+        try:
+            from ..entry import _group_episodes_by_series
+
+            with self._queue_lock:
+                job = self._active_downloads.get(queue_id)
+                if not job:
+                    logging.warning(
+                        "[DEBUG] _resolve_job_anime_objects[%s]: job no longer in "
+                        "active downloads, aborting", queue_id,
+                    )
+                    return []
+                episode_urls = job.get("episode_urls", [])
+
+            anime_list = _group_episodes_by_series(episode_urls)
+            logging.info(
+                "[DEBUG] _resolve_job_anime_objects[%s]: resolved %d URL(s) -> %d anime object(s)",
+                queue_id, len(episode_urls), len(anime_list) if anime_list else 0,
+            )
+
+            with self._queue_lock:
+                job = self._active_downloads.get(queue_id)
+                if job is not None:
+                    job["_anime_objects"] = anime_list
+                    if anime_list:
+                        # Update total_episodes to the actual count
+                        actual_total = sum(len(a.episode_list) for a in anime_list)
+                        if actual_total != job.get("total_episodes", 0):
+                            logging.info(
+                                "[DEBUG] _resolve_job_anime_objects[%s]: total_episodes "
+                                "%s -> %s", queue_id, job.get("total_episodes"), actual_total,
+                            )
+                            job["total_episodes"] = actual_total
+                    job["_needs_resolution"] = False
+                    job["_last_activity"] = time.time()
+
+            return anime_list
+        except Exception as e:
+            logging.error(
+                "[DEBUG] _resolve_job_anime_objects[%s]: failed: %s",
+                queue_id, e, exc_info=True,
+            )
+            with self._queue_lock:
+                job = self._active_downloads.get(queue_id)
+                if job is not None:
+                    job["_needs_resolution"] = False
+                    job["_last_activity"] = time.time()
+            return []
 
     def get_queue_status(self):
         with self._queue_lock:
@@ -478,17 +587,32 @@ class DownloadQueueManager:
             )
             self._update_download_status(queue_id, "downloading", current_episode="Starting...")
             self._touch_job_heartbeat(queue_id)
-            from ..entry import _group_episodes_by_series
             from ..models import Anime
             from pathlib import Path
             from ..action.common import sanitize_filename
             from .. import config
             import os
 
-            logging.info("[DEBUG] _process_download_job[%s]: grouping episodes by series", queue_id)
-            anime_list = _group_episodes_by_series(job["episode_urls"])
-            logging.info("[DEBUG] _process_download_job[%s]: grouped into %d anime object(s)",
-                         queue_id, len(anime_list) if anime_list else 0)
+            # Fix 2: Resolve Anime/Episode objects in the WORKER thread,
+            # not the Flask request thread. _resolve_job_anime_objects
+            # makes HTTP requests that can take 5-30s, which would
+            # otherwise block the entire web UI.
+            if job.get("_needs_resolution") or job.get("_anime_objects") is None:
+                self._update_download_status(
+                    queue_id, "downloading", current_episode="Resolving episodes...",
+                )
+                logging.info(
+                    "[DEBUG] _process_download_job[%s]: resolving anime objects from URLs",
+                    queue_id,
+                )
+                anime_list = self._resolve_job_anime_objects(queue_id)
+            else:
+                anime_list = job.get("_anime_objects") or []
+                logging.info(
+                    "[DEBUG] _process_download_job[%s]: reusing %d cached anime object(s)",
+                    queue_id, len(anime_list),
+                )
+
             if not anime_list:
                 logging.error("[DEBUG] _process_download_job[%s]: URL processing returned no anime", queue_id)
                 self._update_download_status(queue_id, "failed", error_message="URL processing failed")
@@ -498,10 +622,10 @@ class DownloadQueueManager:
                 a.language, a.provider, a.action = job["language"], job["provider"], "Download"
 
             actual_total = sum(len(a.episode_list) for a in anime_list)
-            if actual_total != job["total_episodes"]:
+            if actual_total != job.get("total_episodes", actual_total):
                 logging.warning(
                     "[DEBUG] _process_download_job[%s]: episode count mismatch (job=%d, actual=%d) - correcting",
-                    queue_id, job["total_episodes"], actual_total,
+                    queue_id, job.get("total_episodes"), actual_total,
                 )
                 self._update_download_status(queue_id, "downloading", total_episodes=actual_total)
 
@@ -819,6 +943,8 @@ class DownloadQueueManager:
                     self.update_episode_progress(queue_id, p)
 
             from ..action.download import download
+            from ..action.common import sanitize_filename as _sanitize
+            from ..action.download import _get_output_filename
             # Touch the heartbeat right before invoking yt-dlp so the scheduler
             # can distinguish "still working" from "stuck before download".
             touch_heartbeat()
@@ -831,6 +957,34 @@ class DownloadQueueManager:
                 "[DEBUG] _download_single_episode[%s/%s]: download() returned %s",
                 queue_id, original_link, success,
             )
+
+            # Fix 4: Sanity-check that the output file actually exists.
+            # yt-dlp can sometimes report failure (e.g. post-processing
+            # issues) even when the .mp4 is on disk. In that case we should
+            # not mark the episode as failed - the file is what the user
+            # actually wants.
+            if not success:
+                try:
+                    sanitized_title = _sanitize(anime.title)
+                    expected_filename = _get_output_filename(
+                        anime, episode, sanitized_title,
+                    )
+                    expected_path = (
+                        Path(download_dir) / sanitized_title / expected_filename
+                    )
+                    if expected_path.exists() and expected_path.stat().st_size > 0:
+                        logging.warning(
+                            "[DEBUG] _download_single_episode[%s/%s]: download() returned False "
+                            "but file exists at %s (%d bytes) - treating as success",
+                            queue_id, original_link, expected_path,
+                            expected_path.stat().st_size,
+                        )
+                        success = True
+                except Exception as e:
+                    logging.debug(
+                        "[DEBUG] _download_single_episode[%s/%s]: post-download existence "
+                        "check failed: %s", queue_id, original_link, e,
+                    )
 
             with self._queue_lock:
                 if queue_id in self._active_downloads:

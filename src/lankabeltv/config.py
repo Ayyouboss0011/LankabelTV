@@ -107,7 +107,15 @@ SITE_LANGUAGE_NAMES = {
 # Logging Configuration
 #########################################################################################
 
-log_file_path = os.path.join(tempfile.gettempdir(), "lankabeltv.log")
+log_file_dir = os.environ.get("LANKABELTV_LOG_DIR") or (
+    "/app/data" if os.path.exists("/.dockerenv")
+    else os.path.join(tempfile.gettempdir())
+)
+try:
+    pathlib.Path(log_file_dir).mkdir(parents=True, exist_ok=True)
+    log_file_path = os.path.join(log_file_dir, "lankabeltv.log")
+except Exception:
+    log_file_path = os.path.join(tempfile.gettempdir(), "lankabeltv.log")
 
 
 class CriticalErrorHandler(logging.Handler):
@@ -118,21 +126,24 @@ class CriticalErrorHandler(logging.Handler):
             raise SystemExit(record.getMessage())
 
 
+# Detailed format with timestamps for the file handler so we can do
+# post-mortem analysis of download issues across container restarts.
+_file_log_format = "%(asctime)s %(levelname)s:%(name)s:%(funcName)s: %(message)s"
 logging.basicConfig(
     level=logging.DEBUG,
-    format="%(levelname)s:%(name)s:%(funcName)s: %(message)s",
-    handlers=[logging.FileHandler(log_file_path, mode="w"), CriticalErrorHandler()],
+    format=_file_log_format,
+    handlers=[logging.FileHandler(log_file_path, mode="a"), CriticalErrorHandler()],
 )
 
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.WARNING)
+console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(
-    logging.Formatter("%(levelname)s:%(name)s:%(funcName)s: %(message)s")
+    logging.Formatter("%(asctime)s %(levelname)s:%(name)s:%(funcName)s: %(message)s")
 )
 logging.getLogger().addHandler(console_handler)
 logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
 logging.getLogger("charset_normalizer").setLevel(logging.WARNING)
-logging.getLogger().setLevel(logging.WARNING)
+logging.getLogger().setLevel(logging.INFO)
 logging.getLogger("bs4.dammit").setLevel(logging.ERROR)
 
 urllib3.disable_warnings(InsecureRequestWarning)
