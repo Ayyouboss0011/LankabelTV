@@ -264,10 +264,47 @@ class DownloadQueueManager:
         with self._queue_lock:
             if queue_id in self._active_downloads:
                 job = self._active_downloads[queue_id]
+                logging.info(
+                    "[DEBUG] cancel_download called for job %s (current status: %s)",
+                    queue_id, job["status"],
+                )
                 if job["status"] in ["queued", "downloading"]:
                     self._cancelled_jobs.add(queue_id)
-                    if job["status"] == "queued": self._update_download_status(queue_id, "failed", error_message="Cancelled by user")
+                    # CRITICAL: also update job status immediately so the
+                    # frontend stops showing "Starting..." and the scheduler
+                    # sees a coherent state. The job worker thread will
+                    # perform the final cleanup (move to _completed_downloads)
+                    # when it next wakes up and notices _cancelled_jobs.
+                    if job["status"] == "queued":
+                        self._update_download_status(
+                            queue_id, "failed", error_message="Cancelled by user"
+                        )
+                    else:
+                        # status == "downloading" - flip the visible state but
+                        # do NOT delete the job from _active_downloads yet, so
+                        # the worker thread can finalize the episode statuses.
+                        job["status"] = "cancelled"
+                        job["current_episode"] = "Cancelled by user"
+                        job["error_message"] = "Cancelled by user"
+                    # Wake up both the top-level scheduler and any worker
+                    # currently blocked in cv.wait() so cancellation
+                    # propagates immediately instead of after the 2s timeout.
+                    cv = self._job_scheduler_cv
+                    if cv is not None:
+                        try:
+                            with cv:
+                                cv.notify_all()
+                        except Exception:
+                            pass
+                    logging.info(
+                        "[DEBUG] Job %s marked as cancelled, scheduler notified",
+                        queue_id,
+                    )
                     return True
+            logging.warning(
+                "[DEBUG] cancel_download: job %s not found or not cancellable",
+                queue_id,
+            )
             return False
 
     def skip_current_candidate(self, queue_id: int) -> bool:
@@ -299,8 +336,12 @@ class DownloadQueueManager:
             episodes.append({"url": url, "name": ep_name, "status": "queued", "progress": 0.0, "speed": "", "eta": ""})
         with self._queue_lock:
             queue_id = self._next_id; self._next_id += 1
-            job = {"id": queue_id, "anime_title": anime_title, "episode_urls": episode_urls, "episodes": episodes, "language": language, "provider": provider, "is_movie": is_movie, "episodes_config": episodes_config, "total_episodes": total_episodes, "completed_episodes": 0, "status": "queued", "current_episode": "", "progress_percentage": 0.0, "current_episode_progress": 0.0, "error_message": "", "created_by": created_by, "created_at": datetime.now(), "started_at": None, "completed_at": None, "_ep_heartbeats": {}}
+            job = {"id": queue_id, "anime_title": anime_title, "episode_urls": episode_urls, "episodes": episodes, "language": language, "provider": provider, "is_movie": is_movie, "episodes_config": episodes_config, "total_episodes": total_episodes, "completed_episodes": 0, "status": "queued", "current_episode": "", "progress_percentage": 0.0, "current_episode_progress": 0.0, "error_message": "", "created_by": created_by, "created_at": datetime.now(), "started_at": None, "completed_at": None, "_ep_heartbeats": {}, "_last_activity": time.time()}
             self._active_downloads[queue_id] = job
+            logging.info(
+                "[DEBUG] add_download: queued job %s (anime=%s, eps=%d, lang=%s, prov=%s)",
+                queue_id, anime_title, total_episodes, language, provider,
+            )
         if not self.is_processing:
             self.start_queue_processor()
         # Wake up the scheduler so it picks up the new job immediately
@@ -332,12 +373,44 @@ class DownloadQueueManager:
         on fixed-interval polling.
         """
         cv = self._job_scheduler_cv
+        # Fix F: Stale-job detection. If a job has been in "downloading" state
+        # without any activity for this many seconds, force it to "failed" so
+        # the user is not stuck on a non-responsive queue entry.
+        stale_job_threshold_seconds = 1800  # 30 minutes with no heartbeat
         while self.is_processing and not self._stop_event.is_set():
             try:
                 # Clean up finished threads
                 with self._worker_lock:
                     self.active_worker_threads = [t for t in self.active_worker_threads if t.is_alive()]
                     active_count = len(self.active_worker_threads)
+
+                # Stale-job scan (Fix F): detect jobs that have been "downloading"
+                # for too long without a heartbeat update, and force them to
+                # "failed" so the scheduler can pick up the next job.
+                stale_jobs = []
+                with self._queue_lock:
+                    now = time.time()
+                    for qid, d in list(self._active_downloads.items()):
+                        if d["status"] != "downloading":
+                            continue
+                        last = d.get("_last_activity")
+                        if last is None:
+                            # No heartbeat ever recorded - use started_at as fallback
+                            last_ts = d.get("started_at").timestamp() if d.get("started_at") else now
+                        else:
+                            last_ts = last
+                        if (now - last_ts) > stale_job_threshold_seconds:
+                            stale_jobs.append(qid)
+                for qid in stale_jobs:
+                    logging.error(
+                        "[DEBUG] Stale-job detector: job %s has been downloading "
+                        "for >%ds without activity - force-failing",
+                        qid, stale_job_threshold_seconds,
+                    )
+                    self._update_download_status(
+                        qid, "failed",
+                        error_message="Stale job - no activity for too long",
+                    )
 
                 if active_count < self.max_concurrent_series:
                     job = self._get_next_queued_download()
@@ -375,18 +448,36 @@ class DownloadQueueManager:
 
     def _worker_wrapper(self, job):
         """Wrapper for the download job processing"""
+        queue_id = job["id"]
+        logging.info("[DEBUG] _worker_wrapper: starting job %s (anime=%s, eps=%d)",
+                     queue_id, job.get("anime_title"), job.get("total_episodes"))
         try:
             self._process_download_job(job)
+            logging.info("[DEBUG] _worker_wrapper: job %s finished normally", queue_id)
         except KeyboardInterrupt:
-            self._update_download_status(job["id"], "failed", error_message="Interrupted")
+            logging.warning("[DEBUG] _worker_wrapper: job %s interrupted by KeyboardInterrupt", queue_id)
+            self._update_download_status(queue_id, "failed", error_message="Interrupted")
         except Exception as e:
-            logging.error(f"Worker error for job {job['id']}: {e}")
-            self._update_download_status(job["id"], "failed", error_message=f"Worker Error: {e}")
+            logging.error(f"Worker error for job {queue_id}: {e}", exc_info=True)
+            self._update_download_status(queue_id, "failed", error_message=f"Worker Error: {e}")
+
+    def _touch_job_heartbeat(self, queue_id):
+        """Update the job-level heartbeat. Called from episode workers and
+        from the main loop. Used by the stale-job detector (Fix F)."""
+        with self._queue_lock:
+            if queue_id in self._active_downloads:
+                self._active_downloads[queue_id]["_last_activity"] = time.time()
 
     def _process_download_job(self, job):
         queue_id = job["id"]
         try:
+            logging.info(
+                "[DEBUG] _process_download_job[%s]: enter, urls=%d, lang=%s, prov=%s",
+                queue_id, len(job.get("episode_urls", [])),
+                job.get("language"), job.get("provider"),
+            )
             self._update_download_status(queue_id, "downloading", current_episode="Starting...")
+            self._touch_job_heartbeat(queue_id)
             from ..entry import _group_episodes_by_series
             from ..models import Anime
             from pathlib import Path
@@ -394,17 +485,26 @@ class DownloadQueueManager:
             from .. import config
             import os
 
+            logging.info("[DEBUG] _process_download_job[%s]: grouping episodes by series", queue_id)
             anime_list = _group_episodes_by_series(job["episode_urls"])
-            if not anime_list: self._update_download_status(queue_id, "failed", error_message="URL processing failed"); return
-            
+            logging.info("[DEBUG] _process_download_job[%s]: grouped into %d anime object(s)",
+                         queue_id, len(anime_list) if anime_list else 0)
+            if not anime_list:
+                logging.error("[DEBUG] _process_download_job[%s]: URL processing returned no anime", queue_id)
+                self._update_download_status(queue_id, "failed", error_message="URL processing failed")
+                return
+
             for a in anime_list:
                 a.language, a.provider, a.action = job["language"], job["provider"], "Download"
-            
-            actual_total = sum(len(a.episode_list) for a in anime_list)
-            if actual_total != job["total_episodes"]: self._update_download_status(queue_id, "downloading", total_episodes=actual_total)
 
-            from ..parser import arguments
-            
+            actual_total = sum(len(a.episode_list) for a in anime_list)
+            if actual_total != job["total_episodes"]:
+                logging.warning(
+                    "[DEBUG] _process_download_job[%s]: episode count mismatch (job=%d, actual=%d) - correcting",
+                    queue_id, job["total_episodes"], actual_total,
+                )
+                self._update_download_status(queue_id, "downloading", total_episodes=actual_total)
+
             # Base download directories
             series_download_dir = str(getattr(config, "DEFAULT_SERIES_PATH", os.path.expanduser("~/Downloads")))
             movie_download_dir = str(getattr(config, "DEFAULT_MOVIE_PATH", os.path.expanduser("~/Downloads")))
@@ -413,20 +513,24 @@ class DownloadQueueManager:
                 custom_series_path = self.db.get_setting("series_download_path")
                 custom_movie_path = self.db.get_setting("movie_download_path")
                 custom_general_path = self.db.get_setting("download_path")
-                
+
                 if custom_series_path: series_download_dir = custom_series_path
                 elif custom_general_path: series_download_dir = custom_general_path
                 if custom_movie_path: movie_download_dir = custom_movie_path
                 elif custom_general_path: movie_download_dir = custom_general_path
 
             download_dir = movie_download_dir if job.get("is_movie", False) else series_download_dir
+            logging.info(
+                "[DEBUG] _process_download_job[%s]: download_dir=%s, max_concurrent_episodes=%d",
+                queue_id, download_dir, self.max_concurrent_episodes,
+            )
 
             # Episode processing with internal parallelism
             active_ep_threads = []
             ep_lock = threading.Lock()
             completed_episodes_count = 0
             failed_episodes_count = 0
-            
+
             all_episodes_to_download = []
             for anime in anime_list:
                 for episode in anime.episode_list:
@@ -435,6 +539,19 @@ class DownloadQueueManager:
             ep_iterator = iter(all_episodes_to_download)
             stop_job = False
             cv = self._job_scheduler_cv
+
+            # Pre-cancel all not-yet-started episodes if the job is already cancelled
+            if queue_id in self._cancelled_jobs:
+                logging.info("[DEBUG] _process_download_job[%s]: job was already cancelled, "
+                             "marking all %d episodes as cancelled",
+                             queue_id, len(all_episodes_to_download))
+                for anime, episode in all_episodes_to_download:
+                    with self._queue_lock:
+                        if queue_id in self._active_downloads:
+                            for ep_item in self._active_downloads[queue_id]["episodes"]:
+                                if ep_item["url"] == episode.link and ep_item["status"] == "queued":
+                                    ep_item["status"] = "cancelled"
+                return
 
             while not stop_job:
                 # Clean up finished threads
@@ -450,9 +567,6 @@ class DownloadQueueManager:
                         for t in active_ep_threads:
                             if not t.is_alive():
                                 continue
-                            # Find this thread's episode URL by matching via
-                            # heartbeats dict (best-effort, falls back to
-                            # is_alive polling if heartbeat is missing).
                             if queue_id in self._active_downloads:
                                 heartbeats = self._active_downloads[queue_id].get("_ep_heartbeats", {})
                                 for ep_url, hb in list(heartbeats.items()):
@@ -473,19 +587,43 @@ class DownloadQueueManager:
                                         ep_item["status"] = "failed"
                                         heartbeats = self._active_downloads[queue_id].setdefault("_ep_heartbeats", {})
                                         heartbeats.pop(ep_url, None)
-                        # Also raise in the thread via cancellation flag
                         self._cancelled_episodes.add((queue_id, ep_url))
 
                 # Re-prune dead threads after zombie handling
                 active_ep_threads = [t for t in active_ep_threads if t.is_alive()]
 
+                # Cancellation check (Fix B): also re-check inside the
+                # polling loop so we don't wait 2s on cv.wait() when the user
+                # has just cancelled the job.
                 if self._stop_event.is_set() or queue_id in self._cancelled_jobs:
+                    logging.info(
+                        "[DEBUG] _process_download_job[%s]: cancellation detected, "
+                        "marking %d not-yet-started episodes as cancelled",
+                        queue_id, len(active_ep_threads),
+                    )
+                    # Mark any still-queued episodes as cancelled
+                    with self._queue_lock:
+                        if queue_id in self._active_downloads:
+                            for ep_item in self._active_downloads[queue_id]["episodes"]:
+                                if ep_item["status"] == "queued":
+                                    ep_item["status"] = "cancelled"
+                    # Add cancellation flag for any currently downloading episodes
+                    with self._queue_lock:
+                        if queue_id in self._active_downloads:
+                            for ep_item in self._active_downloads[queue_id]["episodes"]:
+                                if ep_item["status"] == "downloading":
+                                    self._cancelled_episodes.add((queue_id, ep_item["url"]))
                     stop_job = True
                     break
 
                 if len(active_ep_threads) < self.max_concurrent_episodes:
                     try:
                         anime, episode = next(ep_iterator)
+
+                        # Re-check cancellation right before starting a new episode
+                        if self._stop_event.is_set() or queue_id in self._cancelled_jobs:
+                            stop_job = True
+                            break
 
                         original_link = episode.link
                         norm_link = original_link.rstrip("/")
@@ -544,6 +682,11 @@ class DownloadQueueManager:
                     )
 
             if queue_id in self._cancelled_jobs:
+                logging.info(
+                    "[DEBUG] _process_download_job[%s]: finalized cancellation, "
+                    "moving to completed history as 'failed'",
+                    queue_id,
+                )
                 self._update_download_status(queue_id, "failed", error_message="Cancelled by user")
                 with self._queue_lock: self._cancelled_jobs.discard(queue_id)
                 return
@@ -554,14 +697,18 @@ class DownloadQueueManager:
                     job_data = self._active_downloads[queue_id]
                     successful = sum(1 for e in job_data["episodes"] if e["status"] == "completed")
                     total_att = sum(1 for e in job_data["episodes"] if e["status"] in ["completed", "failed"])
-                    
+
                     if successful == 0 and total_att > 0: status, msg = "failed", f"Failed: 0/{total_att} done."
                     elif total_att < len(job_data["episodes"]): status, msg = "completed", f"Partial: {successful}/{len(job_data['episodes'])} done." # Should not happen if iterator finished
                     else: status, msg = "completed", f"Done: {successful} eps."
-                    
+
+                    logging.info(
+                        "[DEBUG] _process_download_job[%s]: finalizing -> status=%s, msg=%s",
+                        queue_id, status, msg,
+                    )
                     self._update_download_status(queue_id, status, completed_episodes=successful, current_episode=msg, error_message=msg if status=="failed" else None)
-        except Exception as e: 
-            logging.error(f"Error in _process_download_job: {e}")
+        except Exception as e:
+            logging.error(f"Error in _process_download_job[{queue_id}]: {e}", exc_info=True)
             self._update_download_status(queue_id, "failed", error_message=f"Error: {e}")
 
     def _download_single_episode(self, queue_id, anime, episode, job, download_dir, ep_lock):
@@ -580,6 +727,11 @@ class DownloadQueueManager:
         lang = ep_config.get("language") or job["language"]
         prov = ep_config.get("provider") or job["provider"]
 
+        logging.info(
+            "[DEBUG] _download_single_episode[%s/%s]: start lang=%s prov=%s",
+            queue_id, original_link, lang, prov,
+        )
+
         # Heartbeat: tracks last time the worker made progress. The job scheduler
         # uses this to detect zombie threads that are alive but not actually
         # doing anything (e.g. yt-dlp stuck on a network call).
@@ -588,6 +740,8 @@ class DownloadQueueManager:
 
         def touch_heartbeat():
             last_heartbeat[0] = time.time()
+            # Also update the job-level heartbeat (Fix F)
+            self._touch_job_heartbeat(queue_id)
 
         with self._queue_lock:
             if queue_id in self._active_downloads:
@@ -602,6 +756,7 @@ class DownloadQueueManager:
                 self._active_downloads[queue_id].setdefault(
                     "_ep_heartbeats", {}
                 )[original_link] = last_heartbeat
+                self._touch_job_heartbeat(queue_id)
 
         try:
             from ..models import Anime as AnimeModel
@@ -664,7 +819,18 @@ class DownloadQueueManager:
                     self.update_episode_progress(queue_id, p)
 
             from ..action.download import download
+            # Touch the heartbeat right before invoking yt-dlp so the scheduler
+            # can distinguish "still working" from "stuck before download".
+            touch_heartbeat()
+            logging.info(
+                "[DEBUG] _download_single_episode[%s/%s]: calling download()",
+                queue_id, original_link,
+            )
             success = download(temp_anime, web_progress_callback, output_dir=download_dir)
+            logging.info(
+                "[DEBUG] _download_single_episode[%s/%s]: download() returned %s",
+                queue_id, original_link, success,
+            )
 
             with self._queue_lock:
                 if queue_id in self._active_downloads:
@@ -699,6 +865,10 @@ class DownloadQueueManager:
                             ep_item["status"] = "failed"
             final_status["value"] = "failed"
         finally:
+            logging.info(
+                "[DEBUG] _download_single_episode[%s/%s]: finally cleanup, final_status=%s",
+                queue_id, original_link, final_status["value"],
+            )
             # ALWAYS clean up heartbeat reference and notify the scheduler,
             # even on uncaught exceptions. This is the guarantee that the
             # parent loop will not get stuck on a zombie thread.
@@ -707,6 +877,8 @@ class DownloadQueueManager:
                     heartbeats = self._active_downloads[queue_id].get("_ep_heartbeats")
                     if isinstance(heartbeats, dict):
                         heartbeats.pop(original_link, None)
+                    # Touch job heartbeat to mark worker exit
+                    self._active_downloads[queue_id]["_last_activity"] = time.time()
 
             # Notify the job-level scheduler that one slot is free
             cv = self._job_scheduler_cv
@@ -753,19 +925,20 @@ class DownloadQueueManager:
 
     def stop_episode(self, queue_id: int, ep_url: str) -> bool:
         logging.info(f"[DEBUG] stop_episode called for job {queue_id}, ep: {ep_url}")
+        result = False
         with self._queue_lock:
             if queue_id in self._active_downloads:
                 job = self._active_downloads[queue_id]
                 # Try to find episode, be flexible with URL matching (trailing slashes)
                 norm_ep_url = ep_url.rstrip("/")
                 ep = next((e for e in job["episodes"] if e["url"].rstrip("/") == norm_ep_url), None)
-                
+
                 if not ep:
                     logging.warning(f"[DEBUG] Episode {ep_url} not found in job {queue_id}. Available: {[e['url'] for e in job['episodes']]}")
                     return False
-                
+
                 logging.info(f"[DEBUG] Found episode {ep['name']} with status {ep['status']}")
-                
+
                 if ep["status"] == "downloading":
                     ep["status"] = "cancelled"
                     # Add BOTH versions of URL to be safe
@@ -773,32 +946,49 @@ class DownloadQueueManager:
                     self._cancelled_episodes.add((queue_id, ep_url.rstrip("/")))
                     self._cancelled_episodes.add((queue_id, ep_url + "/"))
                     logging.info(f"[DEBUG] Episode {ep_url} marked as cancelled in job {queue_id}")
-                    return True
-                
-                # If it's queued, just mark it as cancelled so the iterator skips it
-                if ep["status"] == "queued":
+                    result = True
+
+                elif ep["status"] == "queued":
                     ep["status"] = "cancelled"
                     logging.info(f"[DEBUG] Queued episode {ep_url} marked as cancelled in job {queue_id}")
-                    
+
                     # Also remove from URLs list to be doubly sure, but the iterator check is key
                     if ep["url"] in job["episode_urls"]:
                         job["episode_urls"].remove(ep["url"])
                     elif norm_ep_url in [u.rstrip("/") for u in job["episode_urls"]]:
                         # Handle normalized match
                         job["episode_urls"] = [u for u in job["episode_urls"] if u.rstrip("/") != norm_ep_url]
-                    
+
                     # We don't remove it from job["episodes"] yet so the UI still sees it as cancelled
                     # but we update the count
                     job["total_episodes"] = sum(1 for e in job["episodes"] if e["status"] != "cancelled")
-                    
-                    if job["total_episodes"] == 0:
-                        logging.info(f"[DEBUG] All episodes cancelled for job {queue_id}")
-                        self._cancelled_jobs.add(queue_id)
-                        job["status"] = "failed"
-                        job["error_message"] = "All episodes cancelled"
-                    return True
-                    
-            return False
+                    result = True
+
+                # Check if the job is now fully cancelled (all episodes cancelled).
+                # In that case, mark the job as cancelled/failed so the worker
+                # thread can exit cleanly and the frontend stops showing
+                # "Starting..." (Fix C).
+                remaining = sum(1 for e in job["episodes"] if e["status"] not in ("cancelled",))
+                if remaining == 0 and job["status"] not in ("completed", "failed"):
+                    logging.info(
+                        "[DEBUG] All %d episodes of job %s are now cancelled - "
+                        "marking job as cancelled",
+                        len(job["episodes"]), queue_id,
+                    )
+                    self._cancelled_jobs.add(queue_id)
+                    job["status"] = "cancelled"
+                    job["current_episode"] = "Cancelled by user"
+                    job["error_message"] = "All episodes cancelled"
+                    # Wake up the worker thread
+                    cv = self._job_scheduler_cv
+                    if cv is not None:
+                        try:
+                            with cv:
+                                cv.notify_all()
+                        except Exception:
+                            pass
+
+        return result
 
     def reorder_episodes(self, queue_id: int, new_order_urls: list) -> bool:
         with self._queue_lock:
@@ -818,6 +1008,7 @@ class DownloadQueueManager:
             return None
 
     def _update_download_status(self, queue_id: int, status: str, completed_episodes: int = None, current_episode: str = None, error_message: str = None, total_episodes: int = None, current_episode_progress: float = None):
+        notify_scheduler = False
         with self._queue_lock:
             if queue_id not in self._active_downloads: return False
             d = self._active_downloads[queue_id]; d["status"] = status
@@ -828,6 +1019,7 @@ class DownloadQueueManager:
             if t > 0: d["progress_percentage"] = float(min(100.0, ((int(c) + (float(cp)/100.0))/int(t))*100.0 if status == "downloading" else (int(c)/int(t))*100.0))
             if current_episode is not None: d["current_episode"] = current_episode
             if error_message is not None: d["error_message"] = error_message
+            d["_last_activity"] = time.time()
             if status == "downloading" and d["started_at"] is None: d["started_at"] = datetime.now()
             elif status in ["completed", "failed"]:
                 d["completed_at"] = datetime.now()
@@ -835,7 +1027,18 @@ class DownloadQueueManager:
                 self._completed_downloads.append(d.copy())
                 if len(self._completed_downloads) > self._max_completed_history: self._completed_downloads = self._completed_downloads[-self._max_completed_history:]
                 del self._active_downloads[queue_id]
-            return True
+                # A job slot is now free, wake the top-level scheduler
+                notify_scheduler = True
+        # Wake the scheduler outside the lock (Fix D)
+        if notify_scheduler:
+            cv = self._job_scheduler_cv
+            if cv is not None:
+                try:
+                    with cv:
+                        cv.notify_all()
+                except Exception:
+                    pass
+        return True
 
 
 _download_manager = None
