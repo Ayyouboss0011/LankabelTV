@@ -1,0 +1,7 @@
+# Test artifacts
+tests/e2e/screenshots/
+tests/e2e/__pycache__/
+tests/.pytest_cache/
+tests/__pycache__/
+.pytest_cache/
+__pycache__/

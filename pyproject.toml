@@ -70,3 +70,15 @@ classifiers = [
 
 [project.scripts]
 lankabeltv = "lankabeltv.entry:lankabeltv"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-timeout>=2.0",
+    "playwright>=1.40",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

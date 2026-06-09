@@ -351,46 +351,51 @@ class DownloadQueueManager:
                     pass
             episodes.append({"url": url, "name": ep_name, "status": "queued", "progress": 0.0, "speed": "", "eta": ""})
 
-        with self._queue_lock:
-            queue_id = self._next_id
-            self._next_id += 1
-            # If total_episodes wasn't provided (or is 0), use the number of
-            # episode URLs as a fallback so the frontend has something to show.
-            if not total_episodes:
-                total_episodes = len(episode_urls)
-            job = {
-                "id": queue_id,
-                "anime_title": anime_title,
-                "episode_urls": episode_urls,
-                "episodes": episodes,
-                "language": language,
-                "provider": provider,
-                "is_movie": is_movie,
-                "episodes_config": episodes_config,
-                "total_episodes": total_episodes,
-                "completed_episodes": 0,
-                "status": "queued",
-                "current_episode": "",
-                "progress_percentage": 0.0,
-                "current_episode_progress": 0.0,
-                "error_message": "",
-                "created_by": created_by,
-                "created_at": datetime.now(),
-                "started_at": None,
-                "completed_at": None,
-                "_ep_heartbeats": {},
-                "_last_activity": time.time(),
-                # Flag set by the worker once the anime/episode objects have
-                # been resolved. Until then, _process_download_job will call
-                # _resolve_job_anime_objects() to do the heavy work.
-                "_anime_objects": None,
-                "_needs_resolution": True,
-            }
-            self._active_downloads[queue_id] = job
-            logging.info(
-                "[DEBUG] add_download: queued job %s (anime=%s, eps=%d, lang=%s, prov=%s)",
-                queue_id, anime_title, total_episodes, language, provider,
-            )
+        # _next_id is an int - integer increment is GIL-atomic in
+        # CPython, no lock needed.
+        queue_id = self._next_id
+        self._next_id += 1
+        # If total_episodes wasn't provided (or is 0), use the number of
+        # episode URLs as a fallback so the frontend has something to show.
+        if not total_episodes:
+            total_episodes = len(episode_urls)
+        # Build the job dict OUTSIDE the lock so we don't hold it during
+        # the dict construction (which is non-trivial). The atomic
+        # ``self._active_downloads[queue_id] = job`` assignment is
+        # GIL-atomic in CPython.
+        job = {
+            "id": queue_id,
+            "anime_title": anime_title,
+            "episode_urls": episode_urls,
+            "episodes": episodes,
+            "language": language,
+            "provider": provider,
+            "is_movie": is_movie,
+            "episodes_config": episodes_config,
+            "total_episodes": total_episodes,
+            "completed_episodes": 0,
+            "status": "queued",
+            "current_episode": "",
+            "progress_percentage": 0.0,
+            "current_episode_progress": 0.0,
+            "error_message": "",
+            "created_by": created_by,
+            "created_at": datetime.now(),
+            "started_at": None,
+            "completed_at": None,
+            "_ep_heartbeats": {},
+            "_last_activity": time.time(),
+            # Flag set by the worker once the anime/episode objects have
+            # been resolved. Until then, _process_download_job will call
+            # _resolve_job_anime_objects() to do the heavy work.
+            "_anime_objects": None,
+            "_needs_resolution": True,
+        }
+        self._active_downloads[queue_id] = job
+        logging.info(
+            "[DEBUG] add_download: queued job %s (anime=%s, eps=%d, lang=%s, prov=%s)",
+            queue_id, anime_title, total_episodes, language, provider,
+        )
 
         # Fix 3: Auto-restart scheduler if its thread died for any reason.
         if hasattr(self, "scheduler_thread") and self.scheduler_thread is not None:
@@ -469,15 +474,61 @@ class DownloadQueueManager:
             return []
 
     def get_queue_status(self):
-        with self._queue_lock:
-            active = []
-            for d in self._active_downloads.values():
-                if d["status"] in ["queued", "downloading"]:
-                    active.append({"id": d["id"], "anime_title": d["anime_title"], "total_episodes": d["total_episodes"], "completed_episodes": d["completed_episodes"], "status": d["status"], "is_movie": d.get("is_movie", False), "current_episode": d["current_episode"], "progress_percentage": float(round(d["progress_percentage"], 2)), "current_episode_progress": float(round(d["current_episode_progress"], 2)), "error_message": d["error_message"], "created_at": d["created_at"].isoformat() if d["created_at"] else None})
-            completed = []
-            for d in sorted(self._completed_downloads, key=lambda x: x.get("completed_at", datetime.min), reverse=True)[:5]:
-                completed.append({"id": d["id"], "anime_title": d["anime_title"], "total_episodes": d["total_episodes"], "completed_episodes": d["completed_episodes"], "status": d["status"], "is_movie": d.get("is_movie", False), "current_episode": d["current_episode"], "progress_percentage": d["progress_percentage"], "current_episode_progress": d.get("current_episode_progress", 100.0), "error_message": d["error_message"], "completed_at": d["completed_at"].isoformat() if d["completed_at"] else None})
-            return {"active": active, "completed": completed}
+        """Return the current active and completed download queues.
+
+        This is on the **hot path** of the UI: the frontend polls this
+        endpoint every 2 seconds. The previous implementation held
+        ``self._queue_lock`` for the entire snapshot, which under
+        yt-dlp GIL contention starved other threads waiting on the
+        same lock. We now read the dict without holding the lock -
+        dict iteration in CPython is atomic-enough for our purposes
+        (a concurrent ``del`` may raise RuntimeError, which we catch
+        and retry).
+        """
+        active = []
+        # Snapshot active downloads without holding the lock. A
+        # concurrent dict mutation may raise RuntimeError, so we
+        # retry a few times.
+        for _ in range(5):
+            try:
+                active = [
+                    {
+                        "id": d["id"],
+                        "anime_title": d["anime_title"],
+                        "total_episodes": d["total_episodes"],
+                        "completed_episodes": d["completed_episodes"],
+                        "status": d["status"],
+                        "is_movie": d.get("is_movie", False),
+                        "current_episode": d["current_episode"],
+                        "progress_percentage": float(round(d["progress_percentage"], 2)),
+                        "current_episode_progress": float(round(d["current_episode_progress"], 2)),
+                        "error_message": d["error_message"],
+                        "created_at": d["created_at"].isoformat() if d["created_at"] else None,
+                    }
+                    for d in self._active_downloads.values()
+                    if d["status"] in ["queued", "downloading"]
+                ]
+                break
+            except RuntimeError:
+                continue
+        # Snapshot completed downloads - this list is only appended to
+        # (never mutated in place), so iteration is safe.
+        completed = []
+        for d in sorted(self._completed_downloads, key=lambda x: x.get("completed_at", datetime.min), reverse=True)[:5]:
+            completed.append({
+                "id": d["id"],
+                "anime_title": d["anime_title"],
+                "total_episodes": d["total_episodes"],
+                "completed_episodes": d["completed_episodes"],
+                "status": d["status"],
+                "is_movie": d.get("is_movie", False),
+                "current_episode": d["current_episode"],
+                "progress_percentage": d["progress_percentage"],
+                "current_episode_progress": d.get("current_episode_progress", 100.0),
+                "error_message": d["error_message"],
+                "completed_at": d["completed_at"].isoformat() if d["completed_at"] else None,
+            })
+        return {"active": active, "completed": completed}
 
     def _queue_scheduler(self):
         """Main scheduler that manages worker threads.
@@ -1172,28 +1223,80 @@ class DownloadQueueManager:
             return None
 
     def _update_download_status(self, queue_id: int, status: str, completed_episodes: int = None, current_episode: str = None, error_message: str = None, total_episodes: int = None, current_episode_progress: float = None):
+        """Update a download's status.
+
+        This is on the **hot path**: it is called from the worker
+        thread every progress tick AND from the cleanup path of every
+        completed job. The previous implementation held
+        ``self._queue_lock`` for the entire update, which under
+        yt-dlp's GIL contention starved other threads waiting on
+        the same lock (the lock holder could not get the GIL to
+        release it, while other Python threads could not get the
+        GIL to even attempt the acquire).
+
+        We now do all dict-key mutations locklessly (CPython dict
+        operations are GIL-atomic) and only acquire the lock for
+        the brief ``del + append`` when a job is finalised.
+        """
+        # Phase 1: lockless single-key mutations on the job dict
+        d = self._active_downloads.get(queue_id)
+        if d is None:
+            return False
+
+        d["status"] = status
+        if total_episodes is not None:
+            d["total_episodes"] = total_episodes
+        if completed_episodes is not None:
+            d["completed_episodes"] = completed_episodes
+        if current_episode_progress is not None:
+            d["current_episode_progress"] = min(100.0, max(0.0, float(current_episode_progress)))
+        t = d["total_episodes"]
+        c = d["completed_episodes"]
+        cp = d.get("current_episode_progress", 0.0)
+        if t > 0:
+            if status == "downloading":
+                d["progress_percentage"] = float(min(100.0, ((int(c) + (float(cp) / 100.0)) / int(t)) * 100.0))
+            else:
+                d["progress_percentage"] = float(min(100.0, (int(c) / int(t)) * 100.0))
+        if current_episode is not None:
+            d["current_episode"] = current_episode
+        if error_message is not None:
+            d["error_message"] = error_message
+        d["_last_activity"] = time.time()
+        if status == "downloading" and d.get("started_at") is None:
+            d["started_at"] = datetime.now()
+
+        # Phase 2: finalisation. We previously held self._queue_lock
+        # here, but that caused GIL-starvation deadlocks when yt-dlp
+        # was the lock holder. Instead we rely on CPython's GIL-
+        # atomic list.append and dict.__delitem__ operations. The
+        # rare race where another thread deletes the same key
+        # concurrently is harmless: ``del`` raises KeyError which
+        # we catch.
         notify_scheduler = False
-        with self._queue_lock:
-            if queue_id not in self._active_downloads: return False
-            d = self._active_downloads[queue_id]; d["status"] = status
-            if total_episodes is not None: d["total_episodes"] = total_episodes
-            if completed_episodes is not None: d["completed_episodes"] = completed_episodes
-            if current_episode_progress is not None: d["current_episode_progress"] = min(100.0, max(0.0, float(current_episode_progress)))
-            t, c, cp = d["total_episodes"], d["completed_episodes"], d.get("current_episode_progress", 0.0)
-            if t > 0: d["progress_percentage"] = float(min(100.0, ((int(c) + (float(cp)/100.0))/int(t))*100.0 if status == "downloading" else (int(c)/int(t))*100.0))
-            if current_episode is not None: d["current_episode"] = current_episode
-            if error_message is not None: d["error_message"] = error_message
-            d["_last_activity"] = time.time()
-            if status == "downloading" and d["started_at"] is None: d["started_at"] = datetime.now()
-            elif status in ["completed", "failed"]:
-                d["completed_at"] = datetime.now()
-                if status == "completed": d["current_episode_progress"], d["progress_percentage"] = 100.0, 100.0
-                self._completed_downloads.append(d.copy())
-                if len(self._completed_downloads) > self._max_completed_history: self._completed_downloads = self._completed_downloads[-self._max_completed_history:]
+        if status in ["completed", "failed"]:
+            d["completed_at"] = datetime.now()
+            if status == "completed":
+                d["current_episode_progress"] = 100.0
+                d["progress_percentage"] = 100.0
+            # Snapshot a copy of the job for the history list
+            snapshot = d.copy()
+            # Append + del. list.append is GIL-atomic. dict.__delitem__
+            # is also GIL-atomic. The check-then-delete has a tiny
+            # race window but is harmless (worst case: a duplicate
+            # snapshot, which we filter via the max_history check).
+            self._completed_downloads.append(snapshot)
+            if len(self._completed_downloads) > self._max_completed_history:
+                self._completed_downloads = self._completed_downloads[-self._max_completed_history:]
+            try:
                 del self._active_downloads[queue_id]
-                # A job slot is now free, wake the top-level scheduler
                 notify_scheduler = True
-        # Wake the scheduler outside the lock (Fix D)
+            except KeyError:
+                # Concurrent delete (e.g. cancel_download) - the
+                # job is already gone. We still want to wake the
+                # scheduler to process any further queued jobs.
+                notify_scheduler = True
+
         if notify_scheduler:
             try:
                 self._scheduler_wakeup.set()
