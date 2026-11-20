@@ -1,0 +1,48 @@
+:root {
+  color-scheme: dark;
+  --space-3xs: 2px; --space-2xs: 4px; --space-xs: 8px; --space-sm: 12px; --space-md: 16px; --space-lg: 24px; --space-xl: 40px; --space-2xl: 64px; --space-3xl: 96px; --space-4xl: 144px;
+  --text-xs: 0.75rem; --text-sm: 0.875rem; --text-md: 1rem; --text-lg: 1.2rem; --text-xl: 1.44rem; --text-2xl: 1.728rem; --text-3xl: 2.074rem;
+  --text-display-s: 1.44rem; --text-display: 1.728rem; --text-section: 1.2rem; --text-title: 1rem; --text-lead: 1rem;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); --ease-in: cubic-bezier(0.7, 0, 0.84, 0); --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms; --dur-short: 220ms; --dur-long: 420ms;
+  --color-paper: oklch(13% 0.035 264); --color-paper-2: oklch(18% 0.04 264); --color-paper-3: oklch(23% 0.042 264);
+  --color-ink: oklch(95% 0.012 250); --color-ink-2: oklch(85% 0.018 250); --color-muted: oklch(70% 0.022 256);
+  --color-rule: oklch(29% 0.038 264); --color-rule-2: oklch(38% 0.045 264);
+  --color-accent: oklch(57.25% 0.217 25.3); --color-accent-deep: oklch(50% 0.2 25.3); --color-accent-text: oklch(72% 0.17 25.3);
+  --color-accent-ink: oklch(98% 0.006 80); --color-accent-soft: oklch(25% 0.055 25.3);
+  --color-focus: oklch(72% 0.18 25.3);
+  --color-danger: oklch(70% 0.18 27); --color-danger-deep: oklch(62% 0.17 27); --color-danger-soft: oklch(24% 0.04 27);
+  --color-success: oklch(76% 0.13 155); --color-success-soft: oklch(24% 0.035 155);
+  --color-warning: oklch(80% 0.13 82); --color-warning-soft: oklch(25% 0.035 82);
+  --color-scrim: oklch(7% 0.025 264 / 0.8);
+  --color-error: var(--color-danger);
+  --font-display: "Rethink Sans", ui-sans-serif, system-ui, sans-serif; --font-body: "Rethink Sans", ui-sans-serif, system-ui, sans-serif; --font-outlier: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --font-optical: 400; --display-weight: 600;
+  --radius-card: 0px; --radius-pill: 2px; --rule-hair: 1px; --shadow-card: none;
+  --tracking-display: -0.025em; --lh-tight: 1.08;
+  --container: 1440px; --gutter: 64px; --gap-columns: 32px; --section-gap-s: 120px; --section-gap: 144px; --section-gap-l: 176px;
+  --z-base: 1; --z-raised: 10; --z-dropdown: 100; --z-sticky: 200; --z-sticky-nav: 300; --z-modal: 400; --z-toast: 500; --z-tooltip: 600;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-paper: oklch(97.5% 0.008 82); --color-paper-2: oklch(94.5% 0.01 82); --color-paper-3: oklch(91% 0.012 82);
+  --color-ink: oklch(16% 0.02 60); --color-ink-2: oklch(24% 0.02 60); --color-muted: oklch(42% 0.02 60);
+  --color-rule: oklch(82% 0.012 70); --color-rule-2: oklch(72% 0.015 70);
+  --color-accent: oklch(57.25% 0.217 25.3); --color-accent-deep: oklch(48% 0.19 25.3); --color-accent-text: oklch(45% 0.19 25.3);
+  --color-accent-ink: oklch(98% 0.006 80); --color-accent-soft: oklch(94% 0.025 25.3);
+  --color-focus: oklch(57.25% 0.217 25.3);
+  --color-danger: oklch(52% 0.19 27); --color-danger-deep: oklch(45% 0.18 27); --color-danger-soft: oklch(94% 0.025 27);
+  --color-success: oklch(48% 0.12 155); --color-success-soft: oklch(94% 0.03 155);
+  --color-warning: oklch(55% 0.14 70); --color-warning-soft: oklch(95% 0.025 82);
+  --color-scrim: oklch(12% 0.025 264 / 0.52);
+  --color-error: var(--color-danger); --color-success: oklch(48% 0.12 155);
+}
+
+@media (max-width: 60rem) {
+  :root { --gutter: 24px; --section-gap-s: 80px; --section-gap: 96px; --section-gap-l: 120px; }
+}
+
+@media (max-width: 40rem) {
+  :root { --gutter: 16px; --section-gap-s: 56px; --section-gap: 72px; --section-gap-l: 96px; --gap-columns: 16px; }
+}

@@ -1,0 +1,27 @@
+name: Lint
+
+on:
+  # push:
+  # pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - run: pip install . ruff pylint
+
+      - run: ruff check src/aniworld
+
+      - run: |
+          (
+            pylint src/aniworld \
+              --disable=broad-exception-caught,missing-module-docstring \
+              --allow-reexport-from-package=y  # https://pylint.readthedocs.io/en/stable/user_guide/messages/convention/useless-import-alias.html#known-issue
+          ) || true

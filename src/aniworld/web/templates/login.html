@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Sign in to the LankabelTV library and continue managing downloads.">
+    <title>Sign in to LankabelTV</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rethink+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* Hallmark · shape: app screen · genre: atmospheric · theme: brand (LankabelTV) · redesign: full · v2.0.0 */
+        html, body { overflow-x: clip; }
+        :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+        button:active { transform: translateY(1px); }
+        button:disabled { cursor: not-allowed; opacity: 0.55; background: var(--color-paper-3); color: var(--color-muted); border-color: var(--color-rule); }
+    </style>
+    <script>
+        (function () {
+            try {
+                var saved = localStorage.getItem('theme');
+                if (saved === 'light' || saved === 'dark') {
+                    document.documentElement.dataset.theme = saved;
+                }
+            } catch (error) {}
+        })();
+    </script>
+</head>
+<body>
+    <main class="auth-shell">
+        <section class="auth-aside" aria-label="LankabelTV">
+            <a class="wordmark wordmark--large" href="{{ url_for('index') }}" aria-label="LankabelTV home">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="LankabelTV" width="488" height="113">
+            </a>
+            <p class="auth-aside-copy">AniWorld, S.to and MegaKino in one library.</p>
+        </section>
+
+        <section class="auth-panel">
+            <div class="auth-form-wrap">
+                <h1>Sign in</h1>
+                <p class="auth-copy">Please log in to continue.</p>
+
+                <form id="loginForm" class="auth-form">
+                    <div class="field">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" autocomplete="username" required>
+                    </div>
+
+                    <div class="field">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" autocomplete="current-password" required>
+                    </div>
+
+                    <button type="submit" class="button button--primary auth-submit">
+                        <span class="btn-label">Sign in</span>
+                        <span class="spinner" aria-hidden="true" hidden></span>
+                    </button>
+
+                    <div id="error-message" class="form-message form-message--error" role="alert" style="display: none;"></div>
+                </form>
+            </div>
+        </section>
+    </main>
+
+    <noscript>
+        <div class="noscript">JavaScript is required to sign in.</div>
+    </noscript>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.dataset.theme = savedTheme;
+            document.body.dataset.theme = savedTheme;
+
+            var loginForm = document.getElementById('loginForm');
+            var errorMessage = document.getElementById('error-message');
+            var submit = loginForm.querySelector('button[type="submit"]');
+            var spinner = submit.querySelector('.spinner');
+
+            loginForm.addEventListener('submit', async function (e) {
+                e.preventDefault();
+
+                var username = document.getElementById('username').value;
+                var password = document.getElementById('password').value;
+
+                if (!username || !password) {
+                    showError('Enter both a username and a password.');
+                    return;
+                }
+
+                submit.disabled = true;
+                submit.setAttribute('aria-busy', 'true');
+                spinner.hidden = false;
+
+                try {
+                    var response = await fetch('/login', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({username: username, password: password})
+                    });
+
+                    var data = await response.json();
+
+                    if (data.success) {
+                        window.location.href = data.redirect;
+                    } else {
+                        showError(data.error);
+                    }
+                } catch (error) {
+                    showError('Sign-in failed: ' + error.message);
+                } finally {
+                    submit.disabled = false;
+                    submit.removeAttribute('aria-busy');
+                    spinner.hidden = true;
+                }
+            });
+
+            function showError(message) {
+                errorMessage.textContent = message;
+                errorMessage.style.display = 'block';
+                clearTimeout(showError.timer);
+                showError.timer = setTimeout(function () {
+                    errorMessage.style.display = 'none';
+                }, 6000);
+            }
+        });
+    </script>
+</body>
+</html>

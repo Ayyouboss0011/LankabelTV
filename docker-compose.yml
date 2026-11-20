@@ -1,0 +1,19 @@
+services:
+  aniworld:
+    container_name: aniworld-downloader
+    build: .
+    image: aniworld-new
+    command: ["aniworld", "--web-ui", "--web-port", "${WEB_PORT:-3005}", "--no-browser", "--web-expose"]
+    ports:
+      - "${WEB_PORT:-3005}:${WEB_PORT:-3005}"
+    volumes:
+      - ${SERIES_DOWNLOAD_DIR}:/app/downloads/series
+      - ${MOVIE_DOWNLOAD_DIR}:/app/downloads/movies
+      - aniworld-data:/app/data
+    environment:
+      - SERIES_DOWNLOAD_PATH=/app/downloads/series
+      - MOVIE_DOWNLOAD_PATH=/app/downloads/movies
+    restart: unless-stopped
+
+volumes:
+  aniworld-data:

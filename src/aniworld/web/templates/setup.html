@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Create the first admin account for this LankabelTV instance.">
+    <title>LankabelTV First-time setup</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rethink+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* Hallmark · shape: app screen · genre: atmospheric · theme: brand (LankabelTV) · redesign: full · v2.0.0 */
+        html, body { overflow-x: clip; }
+        :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+        button:active { transform: translateY(1px); }
+        button:disabled { cursor: not-allowed; opacity: 0.55; background: var(--color-paper-3); color: var(--color-muted); border-color: var(--color-rule); }
+    </style>
+    <script>
+        (function () {
+            try {
+                var saved = localStorage.getItem('theme');
+                if (saved === 'light' || saved === 'dark') {
+                    document.documentElement.dataset.theme = saved;
+                }
+            } catch (error) {}
+        })();
+    </script>
+</head>
+<body>
+    <main class="auth-shell">
+        <section class="auth-aside" aria-label="LankabelTV">
+            <a class="wordmark wordmark--large" href="{{ url_for('index') }}" aria-label="LankabelTV home">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="LankabelTV" width="488" height="113">
+            </a>
+            <p class="auth-aside-copy">AniWorld, S.to and MegaKino in one library.</p>
+        </section>
+
+        <section class="auth-panel">
+            <div class="auth-form-wrap">
+                <h1>First-time setup</h1>
+                <p class="auth-copy">Create the admin account for this LankabelTV instance.</p>
+
+                <form id="setupForm" class="auth-form">
+                    <div class="field">
+                        <label for="username">Admin username</label>
+                        <input type="text" id="username" name="username" autocomplete="username" required minlength="3">
+                        <small>At least three characters.</small>
+                    </div>
+
+                    <div class="field">
+                        <label for="password">Admin password</label>
+                        <input type="password" id="password" name="password" autocomplete="new-password" required minlength="6">
+                        <small>At least six characters.</small>
+                    </div>
+
+                    <div class="field">
+                        <label for="confirmPassword">Confirm password</label>
+                        <input type="password" id="confirmPassword" name="confirmPassword" autocomplete="new-password" required>
+                    </div>
+
+                    <button type="submit" class="button button--primary auth-submit">
+                        <span class="btn-label">Create admin account</span>
+                        <span class="spinner" aria-hidden="true" hidden></span>
+                    </button>
+
+                    <div id="error-message" class="form-message form-message--error" role="alert" style="display: none;"></div>
+                    <div id="success-message" class="form-message form-message--success" role="status" style="display: none;"></div>
+                </form>
+            </div>
+        </section>
+    </main>
+
+    <noscript>
+        <div class="noscript">JavaScript is required to create the admin account.</div>
+    </noscript>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.dataset.theme = savedTheme;
+            document.body.dataset.theme = savedTheme;
+
+            var setupForm = document.getElementById('setupForm');
+            var errorMessage = document.getElementById('error-message');
+            var successMessage = document.getElementById('success-message');
+            var submit = setupForm.querySelector('button[type="submit"]');
+            var spinner = submit.querySelector('.spinner');
+
+            setupForm.addEventListener('submit', async function (e) {
+                e.preventDefault();
+
+                var username = document.getElementById('username').value;
+                var password = document.getElementById('password').value;
+                var confirmPassword = document.getElementById('confirmPassword').value;
+
+                if (username.length < 3) {
+                    showError('Use an admin username of at least three characters.');
+                    return;
+                }
+
+                if (password.length < 6) {
+                    showError('Use a password of at least six characters.');
+                    return;
+                }
+
+                if (password !== confirmPassword) {
+                    showError('The passwords do not match.');
+                    return;
+                }
+
+                submit.disabled = true;
+                submit.setAttribute('aria-busy', 'true');
+                spinner.hidden = false;
+
+                try {
+                    var response = await fetch('/setup', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({username: username, password: password})
+                    });
+
+                    var data = await response.json();
+
+                    if (data.success) {
+                        showSuccess(data.message);
+                        setTimeout(function () {
+                            window.location.href = data.redirect;
+                        }, 2000);
+                    } else {
+                        showError(data.error);
+                    }
+                } catch (error) {
+                    showError('Setup failed: ' + error.message);
+                } finally {
+                    submit.disabled = false;
+                    submit.removeAttribute('aria-busy');
+                    spinner.hidden = true;
+                }
+            });
+
+            function showError(message) {
+                errorMessage.textContent = message;
+                errorMessage.style.display = 'block';
+                successMessage.style.display = 'none';
+                clearTimeout(showError.timer);
+                showError.timer = setTimeout(function () {
+                    errorMessage.style.display = 'none';
+                }, 6000);
+            }
+
+            function showSuccess(message) {
+                successMessage.textContent = message;
+                successMessage.style.display = 'block';
+                errorMessage.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>

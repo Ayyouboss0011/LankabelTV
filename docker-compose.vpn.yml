@@ -1,0 +1,41 @@
+services:
+  gluetun:
+    image: qmcgaw/gluetun
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - 8888:8888/tcp # HTTP proxy
+      - 8388:8388/tcp # Shadowsocks
+      - 8388:8388/udp # Shadowsocks
+      - ${WEB_PORT:-3005}:${WEB_PORT:-3005} # Aniworld Web UI
+    volumes:
+      - ${GLUETUN_PATH:-./data/gluetun}:/gluetun
+    environment:
+      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
+      - VPN_TYPE=${VPN_TYPE}
+      - OPENVPN_USER=${OPENVPN_USER}
+      - OPENVPN_PASSWORD=${OPENVPN_PASSWORD}
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES}
+      - TZ=${TZ:-Europe/Berlin}
+      - UPDATER_PERIOD=${UPDATER_PERIOD:-24h}
+    restart: unless-stopped
+
+  aniworld:
+    container_name: aniworld-downloader-vpn
+    build: .
+    image: aniworld-new
+    command: ["aniworld", "--web-ui", "--web-port", "${WEB_PORT:-3005}", "--no-browser", "--web-expose", "--output-dir", "/app/downloads"]
+    network_mode: service:gluetun
+    depends_on:
+      - gluetun
+    volumes:
+      - ${DOWNLOAD_DIR:-~/jellyfin/config/meineserien/}:/app/downloads
+      - aniworld-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  aniworld-data:

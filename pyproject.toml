@@ -1,0 +1,79 @@
+[project]
+name = "aniworld"
+version = "3.9.0"
+authors = [
+  { name="Phoenixthrush UwU", email="contact@phoenixthrush.com" },
+]
+maintainers = [
+  { name="Phoenixthrush UwU", email="contact@phoenixthrush.com" }
+]
+description = "LankabelTV is a command-line tool for downloading and streaming anime, series and movies, compatible with Windows, macOS, and Linux."
+keywords = [
+    "anime", 
+    "aniworld", 
+    "anime-downloader", 
+    "aniworld-downloader",
+    "streaming",
+    "download",
+    "video",
+    "multimedia",
+    "cli"
+]
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = [
+    'requests',
+    'bs4',
+    'yt-dlp',
+    'npyscreen',
+    'tqdm',
+    'fake_useragent',
+    'packaging',
+    'jsbeautifier',
+    'flask',
+    'dnspython',
+    'py-cpuinfo; platform_system == "Windows"',
+    'windows-curses; platform_system == "Windows"',
+    'winfcntl; platform_system == "Windows"'
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+    "Topic :: Multimedia",
+    "Topic :: Multimedia :: Sound/Audio",
+    "Topic :: Multimedia :: Video",
+    "Topic :: Multimedia :: Video :: Display",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Archiving",
+    "Topic :: Utilities",
+    "Typing :: Typed"
+]
+
+[project.urls]
+Homepage = "https://github.com/phoenixthrush/LankabelTV"
+Documentation = "https://github.com/phoenixthrush/LankabelTV/blob/main/README.md"
+Repository = "https://github.com/phoenixthrush/LankabelTV.git"
+"Bug Tracker" = "https://github.com/phoenixthrush/LankabelTV/issues"
+Changelog = "https://github.com/phoenixthrush/LankabelTV/commits"
+"Source Code" = "https://github.com/phoenixthrush/LankabelTV"
+"Download" = "https://github.com/phoenixthrush/LankabelTV/archive/refs/heads/main.zip"
+Funding = "https://github.com/sponsors/phoenixthrush"
+
+[project.scripts]
+aniworld = "aniworld.__main__:main"

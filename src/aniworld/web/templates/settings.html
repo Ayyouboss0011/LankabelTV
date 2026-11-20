@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Configure LankabelTV download paths, language and provider order, account security and local users.">
+    <title>LankabelTV Settings</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Rethink+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* Hallmark · shape: app screen · genre: atmospheric · theme: brand (LankabelTV) · redesign: full · v2.0.0 */
+        html, body { overflow-x: clip; }
+        :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+        button:active { transform: translateY(1px); }
+        button:disabled { cursor: not-allowed; opacity: 0.55; background: var(--color-paper-3); color: var(--color-muted); border-color: var(--color-rule); }
+    </style>
+    <script>
+        (function () {
+            try {
+                var saved = localStorage.getItem('theme');
+                if (saved === 'light' || saved === 'dark') {
+                    document.documentElement.dataset.theme = saved;
+                }
+            } catch (error) {}
+        })();
+    </script>
+</head>
+<body>
+    <a class="skip-link" href="#settings-main">Skip to content</a>
+    <noscript>
+        <div class="noscript">JavaScript is required to switch settings sections and save changes.</div>
+    </noscript>
+
+    <header class="app-bar">
+        <div class="app-bar__inner container">
+            <a class="wordmark" href="{{ url_for('index') }}" aria-label="LankabelTV home">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="LankabelTV" width="488" height="113">
+            </a>
+            <nav class="app-tabs" aria-label="Primary">
+                <a class="app-tab" href="{{ url_for('index') }}#search">Search</a>
+                <a class="app-tab" href="{{ url_for('index') }}#downloads">Downloads</a>
+            </nav>
+            <div class="app-actions">
+                <button class="icon-button" id="theme-toggle" type="button" aria-label="Switch theme" title="Switch theme">
+                    <i id="theme-icon" class="fas fa-sun" aria-hidden="true"></i>
+                </button>
+                {% if auth_enabled and user %}
+                <div class="user-menu">
+                    <button class="user-button" id="user-dropdown-btn" type="button" aria-expanded="false" aria-controls="user-dropdown-menu" title="User menu">
+                        <i class="fas fa-user" aria-hidden="true"></i>
+                        <span class="user-name">{{ user.username }}</span>
+                        <i class="fas fa-chevron-down" aria-hidden="true"></i>
+                    </button>
+                    <div class="dropdown-menu" id="user-dropdown-menu" role="menu">
+                        <button class="dropdown-item" id="theme-toggle-dropdown" type="button" role="menuitem">
+                            <i id="theme-icon-dropdown" class="fas fa-moon" aria-hidden="true"></i> Toggle theme
+                        </button>
+                        <a href="{{ url_for('settings') }}" class="dropdown-item" role="menuitem">
+                            <i class="fas fa-gear" aria-hidden="true"></i> Settings
+                        </a>
+                        <button class="dropdown-item logout-btn" id="logout-btn" type="button" role="menuitem">
+                            <i class="fas fa-arrow-right-from-bracket" aria-hidden="true"></i> Log out
+                        </button>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </header>
+
+    <main class="container settings-main" id="settings-main">
+        <header class="view-heading">
+            <div>
+                <h1>Settings</h1>
+                {% if auth_enabled and user.is_admin %}
+                <p class="lead">Paths, preferences, access and the people using this library.</p>
+                {% elif auth_enabled %}
+                <p class="lead">Paths, language and provider order for your account.</p>
+                {% else %}
+                <p class="lead">Paths, language and provider order for this local instance.</p>
+                {% endif %}
+            </div>
+        </header>
+
+        <div id="message-container" class="message-container" role="status" aria-live="polite"></div>
+
+        {% if auth_enabled and user %}
+        <div class="identity">
+            <span class="identity-label">Signed in as</span>
+            <strong>{{ user.username }}</strong>
+            <span class="role-badge {{ 'original-admin' if user.is_original_admin else ('admin' if user.is_admin else 'user') }}">
+                {{ 'Original admin' if user.is_original_admin else ('Admin' if user.is_admin else 'User') }}
+            </span>
+        </div>
+        {% endif %}
+
+        <nav class="settings-tabs" aria-label="Settings sections" role="tablist">
+            <button class="settings-nav-item active" data-section="general" type="button" role="tab" aria-controls="general" aria-selected="true">General</button>
+            {% if auth_enabled %}
+            <button class="settings-nav-item" data-section="security" type="button" role="tab" aria-controls="security" aria-selected="false">Security</button>
+            {% endif %}
+            <button class="settings-nav-item" data-section="languages" type="button" role="tab" aria-controls="languages" aria-selected="false">Languages</button>
+            <button class="settings-nav-item" data-section="providers" type="button" role="tab" aria-controls="providers" aria-selected="false">Providers</button>
+            {% if auth_enabled and user.is_admin %}
+            <button class="settings-nav-item" data-section="users" type="button" role="tab" aria-controls="users" aria-selected="false">Users</button>
+            {% endif %}
+        </nav>
+
+        <div class="settings-layout">
+            <div class="settings-content">
+                <section id="general" class="settings-section active" role="tabpanel" aria-labelledby="general-title">
+                    <div class="section-heading">
+                        <h2 id="general-title">General</h2>
+                        <p class="section-intro">Choose where this instance saves episodes and films.</p>
+                    </div>
+
+                    <form id="systemSettingsForm" class="form-stack">
+                        <div class="field">
+                            <label for="seriesDownloadPath">Series download path</label>
+                            <input type="text" id="seriesDownloadPath" placeholder="Default: ~/Downloads">
+                        </div>
+                        <div class="field">
+                            <label for="movieDownloadPath">Movie download path</label>
+                            <input type="text" id="movieDownloadPath" placeholder="Default: ~/Downloads">
+                            <small>In Docker, use the path inside the container.</small>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="button button--primary">Save settings</button>
+                        </div>
+                    </form>
+                </section>
+
+                {% if auth_enabled %}
+                <section id="security" class="settings-section" role="tabpanel" aria-labelledby="security-title">
+                    <div class="section-heading">
+                        <h2 id="security-title">Security</h2>
+                        <p class="section-intro">Change the password for your account.</p>
+                    </div>
+
+                    <form id="changePasswordForm" class="form-stack">
+                        <div class="field">
+                            <label for="currentPassword">Current password</label>
+                            <input type="password" id="currentPassword" name="currentPassword" autocomplete="current-password" required>
+                        </div>
+                        <div class="field">
+                            <label for="newPassword">New password</label>
+                            <input type="password" id="newPassword" name="newPassword" autocomplete="new-password" required minlength="6">
+                            <small>At least six characters.</small>
+                        </div>
+                        <div class="field">
+                            <label for="confirmNewPassword">Confirm new password</label>
+                            <input type="password" id="confirmNewPassword" name="confirmNewPassword" autocomplete="new-password" required>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="button button--primary">Change password</button>
+                        </div>
+                    </form>
+                </section>
+                {% endif %}
+
+                <section id="languages" class="settings-section" role="tabpanel" aria-labelledby="languages-title">
+                    <div class="section-heading">
+                        <h2 id="languages-title">Languages</h2>
+                        <p class="section-intro">Set the order used to preselect an episode language.</p>
+                    </div>
+
+                    <form id="languagePreferencesForm" class="form-stack">
+                        <div class="pref-grid">
+                            <fieldset class="pref-group">
+                                <legend>AniWorld</legend>
+                                <div class="field">
+                                    <label for="aniworldLang1">Priority 1</label>
+                                    <select id="aniworldLang1" class="lang-pref-select aniworld-pref" data-index="0">
+                                        <option value="">None</option>
+                                        <option value="German Dub">German Dub</option>
+                                        <option value="German Sub">German Sub</option>
+                                        <option value="English Sub">English Sub</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label for="aniworldLang2">Priority 2</label>
+                                    <select id="aniworldLang2" class="lang-pref-select aniworld-pref" data-index="1">
+                                        <option value="">None</option>
+                                        <option value="German Dub">German Dub</option>
+                                        <option value="German Sub">German Sub</option>
+                                        <option value="English Sub">English Sub</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label for="aniworldLang3">Priority 3</label>
+                                    <select id="aniworldLang3" class="lang-pref-select aniworld-pref" data-index="2">
+                                        <option value="">None</option>
+                                        <option value="German Dub">German Dub</option>
+                                        <option value="German Sub">German Sub</option>
+                                        <option value="English Sub">English Sub</option>
+                                    </select>
+                                </div>
+                            </fieldset>
+
+                            <fieldset class="pref-group">
+                                <legend>S.to</legend>
+                                <div class="field">
+                                    <label for="stoLang1">Priority 1</label>
+                                    <select id="stoLang1" class="lang-pref-select sto-pref" data-index="0">
+                                        <option value="">None</option>
+                                        <option value="German Dub">German Dub</option>
+                                        <option value="English Dub">English Dub</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label for="stoLang2">Priority 2</label>
+                                    <select id="stoLang2" class="lang-pref-select sto-pref" data-index="1">
+                                        <option value="">None</option>
+                                        <option value="German Dub">German Dub</option>
+                                        <option value="English Dub">English Dub</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label for="stoLang3">Priority 3</label>
+                                    <select id="stoLang3" class="lang-pref-select sto-pref" data-index="2">
+                                        <option value="">None</option>
+                                        <option value="German Dub">German Dub</option>
+                                        <option value="English Dub">English Dub</option>
+                                    </select>
+                                </div>
+                            </fieldset>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="button button--primary">Save language order</button>
+                        </div>
+                    </form>
+                </section>
+
+                <section id="providers" class="settings-section" role="tabpanel" aria-labelledby="providers-title">
+                    <div class="section-heading">
+                        <h2 id="providers-title">Providers</h2>
+                        <p class="section-intro">Set the order used to preselect a streaming provider.</p>
+                    </div>
+
+                    <form id="providerPreferencesForm" class="form-stack">
+                        <div class="pref-grid">
+                            <fieldset class="pref-group">
+                                <legend>AniWorld</legend>
+                                <div class="field">
+                                    <label for="aniworldProv1">Priority 1</label>
+                                    <select id="aniworldProv1" class="prov-pref-select aniworld-prov-pref" data-index="0">
+                                        <option value="">None</option>
+                                        <option value="VOE">VOE</option>
+                                        <option value="Vidoza">Vidoza</option>
+                                        <option value="Streamtape">Streamtape</option>
+                                        <option value="Filemoon">Filemoon</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label for="aniworldProv2">Priority 2</label>
+                                    <select id="aniworldProv2" class="prov-pref-select aniworld-prov-pref" data-index="1">
+                                        <option value="">None</option>
+                                        <option value="VOE">VOE</option>
+                                        <option value="Vidoza">Vidoza</option>
+                                        <option value="Streamtape">Streamtape</option>
+                                        <option value="Filemoon">Filemoon</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label for="aniworldProv3">Priority 3</label>
+                                    <select id="aniworldProv3" class="prov-pref-select aniworld-prov-pref" data-index="2">
+                                        <option value="">None</option>
+                                        <option value="VOE">VOE</option>
+                                        <option value="Vidoza">Vidoza</option>
+                                        <option value="Streamtape">Streamtape</option>
+                                        <option value="Filemoon">Filemoon</option>
+                                    </select>
+                                </div>
+                            </fieldset>
+
+                            <fieldset class="pref-group">
+                                <legend>S.to</legend>
+                                <div class="field">
+                                    <label for="stoProv1">Priority 1</label>
+                                    <select id="stoProv1" class="prov-pref-select sto-prov-pref" data-index="0">
+                                        <option value="">None</option>
+                                        <option value="VOE">VOE</option>
+                                        <option value="Vidoza">Vidoza</option>
+                                        <option value="Streamtape">Streamtape</option>
+                                        <option value="Filemoon">Filemoon</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label for="stoProv2">Priority 2</label>
+                                    <select id="stoProv2" class="prov-pref-select sto-prov-pref" data-index="1">
+                                        <option value="">None</option>
+                                        <option value="VOE">VOE</option>
+                                        <option value="Vidoza">Vidoza</option>
+                                        <option value="Streamtape">Streamtape</option>
+                                        <option value="Filemoon">Filemoon</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label for="stoProv3">Priority 3</label>
+                                    <select id="stoProv3" class="prov-pref-select sto-prov-pref" data-index="2">
+                                        <option value="">None</option>
+                                        <option value="VOE">VOE</option>
+                                        <option value="Vidoza">Vidoza</option>
+                                        <option value="Streamtape">Streamtape</option>
+                                        <option value="Filemoon">Filemoon</option>
+                                    </select>
+                                </div>
+                            </fieldset>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="button button--primary">Save provider order</button>
+                        </div>
+                    </form>
+                </section>
+
+                {% if auth_enabled and user.is_admin %}
+                <section id="users" class="settings-section" role="tabpanel" aria-labelledby="users-title">
+                    <div class="section-heading">
+                        <h2 id="users-title">Users</h2>
+                        <p class="section-intro">Create accounts and review the people who can reach this library.</p>
+                    </div>
+
+                    <div class="surface add-user-form">
+                        <h3>Add user</h3>
+                        <form id="addUserForm" class="form-grid">
+                            <div class="field">
+                                <label for="newUsername">Username</label>
+                                <input type="text" id="newUsername" name="newUsername" autocomplete="off" required minlength="3">
+                            </div>
+                            <div class="field">
+                                <label for="newUserPassword">Password</label>
+                                <input type="password" id="newUserPassword" name="newUserPassword" autocomplete="new-password" required minlength="6">
+                            </div>
+                            <div class="checkbox-row checkbox-row--compact">
+                                <input type="checkbox" id="newIsAdmin" name="newIsAdmin">
+                                <label for="newIsAdmin">Admin</label>
+                            </div>
+                            <div class="form-actions form-actions--inline">
+                                <button type="submit" class="button button--primary">Add user</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="users-list">
+                        <div class="section-heading section-heading--row">
+                            <h3>Existing users</h3>
+                        </div>
+                        <div class="table-container">
+                            <table class="users-table">
+                                <thead>
+                                    <tr>
+                                        <th>Username</th>
+                                        <th>Role</th>
+                                        <th>Created</th>
+                                        <th>Last login</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="usersTableBody">
+                                    {% for u in users %}
+                                    <tr data-user-id="{{ u.id }}">
+                                        <td>{{ u.username }}</td>
+                                        <td>
+                                            <span class="role-badge {{ 'original-admin' if u.is_original_admin else ('admin' if u.is_admin else 'user') }}">
+                                                {{ 'Original admin' if u.is_original_admin else ('Admin' if u.is_admin else 'User') }}
+                                            </span>
+                                        </td>
+                                        <td>{{ u.created_at[:19] if u.created_at else 'N/A' }}</td>
+                                        <td>{{ u.last_login[:19] if u.last_login else 'Never' }}</td>
+                                        <td>
+                                            {% if u.id != user.id and not u.is_original_admin %}
+                                            <button class="button button--quiet button--small delete-user" data-user-id="{{ u.id }}" data-username="{{ u.username }}" type="button" aria-label="Delete {{ u.username }}">
+                                                <i class="fas fa-trash" aria-hidden="true"></i>
+                                            </button>
+                                            {% elif u.is_original_admin %}
+                                            <span class="text-muted">Protected</span>
+                                            {% else %}
+                                            <span class="text-muted">You</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+                {% endif %}
+            </div>
+        </div>
+    </main>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var navItems = document.querySelectorAll('.settings-nav-item');
+            var sections = document.querySelectorAll('.settings-section');
+
+            navItems.forEach(function (item) {
+                item.addEventListener('click', function () {
+                    var sectionId = item.getAttribute('data-section');
+
+                    navItems.forEach(function (nav) {
+                        nav.classList.remove('active');
+                        nav.setAttribute('aria-selected', 'false');
+                    });
+                    item.classList.add('active');
+                    item.setAttribute('aria-selected', 'true');
+
+                    sections.forEach(function (section) {
+                        section.classList.remove('active');
+                        if (section.id === sectionId) section.classList.add('active');
+                    });
+
+                    history.pushState(null, null, '#' + sectionId);
+                });
+            });
+
+            var currentHash = window.location.hash.substring(1);
+            if (currentHash) {
+                var targetNav = document.querySelector('.settings-nav-item[data-section="' + currentHash + '"]');
+                if (targetNav) targetNav.click();
+            }
+
+            var savedTheme = localStorage.getItem('theme') || 'dark';
+            document.documentElement.dataset.theme = savedTheme;
+            document.body.dataset.theme = savedTheme;
+
+            var appThemeToggle = document.getElementById('theme-toggle');
+            var appThemeIcon = document.getElementById('theme-icon');
+            var appThemeDropdownIcon = document.getElementById('theme-icon-dropdown');
+
+            function updateAppThemeIcons(theme) {
+                if (appThemeIcon) appThemeIcon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+                if (appThemeDropdownIcon) appThemeDropdownIcon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+            }
+
+            updateAppThemeIcons(savedTheme);
+
+            if (appThemeToggle) {
+                appThemeToggle.addEventListener('click', function () {
+                    var currentTheme = document.documentElement.dataset.theme || 'dark';
+                    var newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                    document.documentElement.dataset.theme = newTheme;
+                    document.body.dataset.theme = newTheme;
+                    localStorage.setItem('theme', newTheme);
+                    updateAppThemeIcons(newTheme);
+                });
+            }
+
+            loadSettings();
+            loadLanguagePreferences();
+            loadProviderPreferences();
+
+            var userDropdownBtn = document.getElementById('user-dropdown-btn');
+            var userDropdownMenu = document.getElementById('user-dropdown-menu');
+            var themeToggleDropdown = document.getElementById('theme-toggle-dropdown');
+            var themeIconDropdown = document.getElementById('theme-icon-dropdown');
+
+            if (userDropdownBtn && userDropdownMenu) {
+                userDropdownBtn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    var isOpen = userDropdownMenu.classList.toggle('show');
+                    userDropdownBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                });
+
+                document.addEventListener('click', function () {
+                    userDropdownMenu.classList.remove('show');
+                    userDropdownBtn.setAttribute('aria-expanded', 'false');
+                });
+
+                userDropdownMenu.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                });
+            }
+
+            if (themeToggleDropdown && themeIconDropdown) {
+                updateDropdownThemeIcon(savedTheme);
+
+                themeToggleDropdown.addEventListener('click', function () {
+                    var currentTheme = document.documentElement.dataset.theme || 'dark';
+                    var newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                    document.documentElement.dataset.theme = newTheme;
+                    document.body.dataset.theme = newTheme;
+                    localStorage.setItem('theme', newTheme);
+                    updateDropdownThemeIcon(newTheme);
+                });
+
+                function updateDropdownThemeIcon(theme) {
+                    themeIconDropdown.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+                    updateAppThemeIcons(theme);
+                }
+            }
+
+            async function loadSettings() {
+                try {
+                    var response = await fetch('/api/download-path');
+                    var data = await response.json();
+
+                    var seriesPathInput = document.getElementById('seriesDownloadPath');
+                    if (seriesPathInput && data.series_path) seriesPathInput.value = data.series_path;
+
+                    var moviePathInput = document.getElementById('movieDownloadPath');
+                    if (moviePathInput && data.movie_path) moviePathInput.value = data.movie_path;
+                } catch (error) {
+                    console.error('Failed to load settings:', error);
+                }
+            }
+
+            async function loadLanguagePreferences() {
+                try {
+                    var response = await fetch('/api/settings/language-preferences');
+                    var data = await response.json();
+                    if (data.success) {
+                        if (data.aniworld) {
+                            var aniSelects = document.querySelectorAll('.aniworld-pref');
+                            data.aniworld.forEach(function (val, i) {
+                                if (aniSelects[i]) aniSelects[i].value = val;
+                            });
+                        }
+                        if (data.sto) {
+                            var stoSelects = document.querySelectorAll('.sto-pref');
+                            data.sto.forEach(function (val, i) {
+                                if (stoSelects[i]) stoSelects[i].value = val;
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to load language preferences:', error);
+                }
+            }
+
+            async function loadProviderPreferences() {
+                try {
+                    var response = await fetch('/api/settings/provider-preferences');
+                    var data = await response.json();
+                    if (data.success) {
+                        if (data.aniworld) {
+                            var aniSelects = document.querySelectorAll('.aniworld-prov-pref');
+                            data.aniworld.forEach(function (val, i) {
+                                if (aniSelects[i]) aniSelects[i].value = val;
+                            });
+                        }
+                        if (data.sto) {
+                            var stoSelects = document.querySelectorAll('.sto-prov-pref');
+                            data.sto.forEach(function (val, i) {
+                                if (stoSelects[i]) stoSelects[i].value = val;
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to load provider preferences:', error);
+                }
+            }
+
+            var languagePreferencesForm = document.getElementById('languagePreferencesForm');
+            if (languagePreferencesForm) {
+                languagePreferencesForm.addEventListener('submit', async function (e) {
+                    e.preventDefault();
+                    var aniworld = Array.from(document.querySelectorAll('.aniworld-pref')).map(function (s) { return s.value; }).filter(function (v) { return v !== ''; });
+                    var sto = Array.from(document.querySelectorAll('.sto-pref')).map(function (s) { return s.value; }).filter(function (v) { return v !== ''; });
+                    try {
+                        var response = await fetch('/api/settings/language-preferences', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({aniworld: aniworld, sto: sto})
+                        });
+                        var data = await response.json();
+                        showMessage(data.success ? data.message : data.error, data.success ? 'success' : 'error');
+                    } catch (error) {
+                        showMessage('Could not save the language order: ' + error.message, 'error');
+                    }
+                });
+            }
+
+            var providerPreferencesForm = document.getElementById('providerPreferencesForm');
+            if (providerPreferencesForm) {
+                providerPreferencesForm.addEventListener('submit', async function (e) {
+                    e.preventDefault();
+                    var aniworld = Array.from(document.querySelectorAll('.aniworld-prov-pref')).map(function (s) { return s.value; }).filter(function (v) { return v !== ''; });
+                    var sto = Array.from(document.querySelectorAll('.sto-prov-pref')).map(function (s) { return s.value; }).filter(function (v) { return v !== ''; });
+                    try {
+                        var response = await fetch('/api/settings/provider-preferences', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({aniworld: aniworld, sto: sto})
+                        });
+                        var data = await response.json();
+                        showMessage(data.success ? data.message : data.error, data.success ? 'success' : 'error');
+                    } catch (error) {
+                        showMessage('Could not save the provider order: ' + error.message, 'error');
+                    }
+                });
+            }
+
+            var systemSettingsForm = document.getElementById('systemSettingsForm');
+            if (systemSettingsForm) {
+                systemSettingsForm.addEventListener('submit', async function (e) {
+                    e.preventDefault();
+                    var seriesPath = document.getElementById('seriesDownloadPath').value;
+                    var moviePath = document.getElementById('movieDownloadPath').value;
+
+                    try {
+                        var response = await fetch('/api/download-path', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({series_path: seriesPath, movie_path: moviePath})
+                        });
+                        var data = await response.json();
+                        showMessage(data.success ? data.message : data.error, data.success ? 'success' : 'error');
+                    } catch (error) {
+                        showMessage('Could not save the paths: ' + error.message, 'error');
+                    }
+                });
+            }
+
+            var changePasswordForm = document.getElementById('changePasswordForm');
+            if (changePasswordForm) {
+                changePasswordForm.addEventListener('submit', async function (e) {
+                    e.preventDefault();
+                    var currentPassword = document.getElementById('currentPassword').value;
+                    var newPassword = document.getElementById('newPassword').value;
+                    var confirmNewPassword = document.getElementById('confirmNewPassword').value;
+
+                    if (newPassword !== confirmNewPassword) {
+                        showMessage('The new passwords do not match.', 'error');
+                        return;
+                    }
+
+                    if (newPassword.length < 6) {
+                        showMessage('Use a new password of at least six characters.', 'error');
+                        return;
+                    }
+
+                    try {
+                        var response = await fetch('/api/change-password', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({current_password: currentPassword, new_password: newPassword})
+                        });
+                        var data = await response.json();
+                        if (data.success) {
+                            showMessage(data.message, 'success');
+                            changePasswordForm.reset();
+                        } else {
+                            showMessage(data.error, 'error');
+                        }
+                    } catch (error) {
+                        showMessage('Could not change the password: ' + error.message, 'error');
+                    }
+                });
+            }
+
+            var logoutBtn = document.getElementById('logout-btn');
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', async function () {
+                    try {
+                        var response = await fetch('/logout', {method: 'POST', headers: {'Content-Type': 'application/json'}});
+                        var data = await response.json();
+                        if (data.success) window.location.href = data.redirect;
+                    } catch (error) {
+                        showMessage('Logout failed: ' + error.message, 'error');
+                    }
+                });
+            }
+
+            var addUserForm = document.getElementById('addUserForm');
+            if (addUserForm) {
+                addUserForm.addEventListener('submit', async function (e) {
+                    e.preventDefault();
+                    var username = document.getElementById('newUsername').value;
+                    var password = document.getElementById('newUserPassword').value;
+                    var isAdmin = document.getElementById('newIsAdmin').checked;
+
+                    try {
+                        var response = await fetch('/api/users', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({username: username, password: password, is_admin: isAdmin})
+                        });
+                        var data = await response.json();
+                        if (data.success) {
+                            showMessage(data.message, 'success');
+                            addUserForm.reset();
+                            loadUsers();
+                        } else {
+                            showMessage(data.error, 'error');
+                        }
+                    } catch (error) {
+                        showMessage('Could not add the user: ' + error.message, 'error');
+                    }
+                });
+            }
+
+            document.addEventListener('click', async function (e) {
+                var button = e.target.closest('.delete-user');
+                if (!button) return;
+                var userId = button.dataset.userId;
+                var username = button.dataset.username;
+                if (!confirm('Delete the user "' + username + '"?')) return;
+
+                try {
+                    var response = await fetch('/api/users/' + userId, {method: 'DELETE'});
+                    var data = await response.json();
+                    if (data.success) {
+                        showMessage(data.message, 'success');
+                        loadUsers();
+                    } else {
+                        showMessage(data.error, 'error');
+                    }
+                } catch (error) {
+                    showMessage('Could not delete the user: ' + error.message, 'error');
+                }
+            });
+
+            async function loadUsers() {
+                try {
+                    var response = await fetch('/api/users');
+                    var data = await response.json();
+                    if (data.success) updateUsersTable(data.users);
+                } catch (error) {
+                    console.error('Failed to load users:', error);
+                }
+            }
+
+            function escapeText(value) {
+                var node = document.createElement('div');
+                node.textContent = value == null ? '' : value;
+                return node.innerHTML;
+            }
+
+            function escapeAttribute(value) {
+                return escapeText(value).replace(/"/g, '&quot;');
+            }
+
+            function updateUsersTable(users) {
+                var tbody = document.getElementById('usersTableBody');
+                var currentUserId = {{ user.id if user else 0 }};
+
+                tbody.innerHTML = users.map(function (u) {
+                    var roleClass = u.is_original_admin ? 'original-admin' : (u.is_admin ? 'admin' : 'user');
+                    var roleText = u.is_original_admin ? 'Original admin' : (u.is_admin ? 'Admin' : 'User');
+                    var username = escapeText(u.username);
+                    var usernameAttribute = escapeAttribute(u.username);
+                    var action = '';
+                    if (u.id !== currentUserId && !u.is_original_admin) {
+                        action = '<button class="button button--quiet button--small delete-user" data-user-id="' + u.id + '" data-username="' + usernameAttribute + '" type="button" aria-label="Delete ' + usernameAttribute + '"><i class="fas fa-trash" aria-hidden="true"></i></button>';
+                    } else if (u.is_original_admin) {
+                        action = '<span class="text-muted">Protected</span>';
+                    } else {
+                        action = '<span class="text-muted">You</span>';
+                    }
+                    return '<tr data-user-id="' + u.id + '">' +
+                        '<td>' + username + '</td>' +
+                        '<td><span class="role-badge ' + roleClass + '">' + roleText + '</span></td>' +
+                        '<td>' + (u.created_at ? escapeText(u.created_at.substring(0, 19)) : 'N/A') + '</td>' +
+                        '<td>' + (u.last_login ? escapeText(u.last_login.substring(0, 19)) : 'Never') + '</td>' +
+                        '<td>' + action + '</td>' +
+                    '</tr>';
+                }).join('');
+            }
+
+            function showMessage(message, type) {
+                var container = document.getElementById('message-container');
+                var messageEl = document.createElement('div');
+                messageEl.className = 'message ' + type;
+                messageEl.innerHTML = '<span></span><button class="message-close" type="button" aria-label="Dismiss">&times;</button>';
+                messageEl.querySelector('span').textContent = message;
+                container.appendChild(messageEl);
+
+                setTimeout(function () {
+                    if (messageEl.parentNode) messageEl.parentNode.removeChild(messageEl);
+                }, 6000);
+
+                messageEl.querySelector('.message-close').addEventListener('click', function () {
+                    if (messageEl.parentNode) messageEl.parentNode.removeChild(messageEl);
+                });
+            }
+        });
+    </script>
+</body>
+</html>
