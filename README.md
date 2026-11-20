@@ -4,11 +4,7 @@
 
 LankabelTV ist ein leistungsstarkes All-in-One-Tool zum Herunterladen und Streamen von Anime von **aniworld.to** und Filmen/Serien von **s.to**. Es bietet ein **modernes Web-Interface**, ein robustes CLI für Power-User und ein automatisiertes Tracking-System, um deine Bibliothek aktuell zu halten.
 
-[![License](https://img.shields.io/pypi/l/aniworld?label=License&color=blue)](LICENSE)
-
-![LankabelTV - Demo](readme_image.png)
-
-## 🚀 Schnellstart
+## Schnellstart
 
 **Mit Docker (Empfohlen):**
 
